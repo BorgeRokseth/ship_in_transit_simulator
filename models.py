@@ -1,3 +1,7 @@
+""" This module provides classes that that can be used to setup and
+    run simulation models of a ship in transit.
+"""
+
 import numpy as np
 import math
 import matplotlib.pyplot as plt
@@ -62,10 +66,12 @@ class SimulationConfiguration(NamedTuple):
 
 
 class ShipModel:
-    ''' A 7-state simulation model for a ship in transit. The ships is
-        propelled by a single propeller and steered by a rudder. The propeller
-        is powered by either the main engine, an auxiliary motor referred to
-        as the hybrid shaft generator, or both. The seven states are:
+    ''' Creates a ship model object that can be used to simulate a ship in transit
+
+        The ships model is propelled by a single propeller and steered by a rudder.
+        The propeller is powered by either the main engine, an auxiliary motor
+        referred to as the hybrid shaft generator, or both. The model contains the
+        following states:
         - North position of ship
         - East position of ship
         - Yaw angle (relative to north axis)
@@ -73,6 +79,8 @@ class ShipModel:
         - Sway velocity (sideways)
         - Yaw rate
         - Propeller shaft speed
+
+        Simulation results are stored in the instance variable simulation_results
     '''
     def __init__(self, ship_config: ShipConfiguration,
                  machinery_config: MachinerySystemConfiguration,
@@ -96,10 +104,9 @@ class ShipModel:
         self.i_z = self.mass * (self.l_ship ** 2 + self.w_ship ** 2) / 12
 
         # zero-frequency added mass
-        #self.set_added_mass(0.4, 0.4, 0.4)
-        self.set_added_mass(ship_config.added_mass_coefficient_in_surge,
-                            ship_config.added_mass_coefficient_in_sway,
-                            ship_config.added_mass_coefficient_in_yaw)
+        self.x_du, self.y_dv, self.n_dr = self.set_added_mass(ship_config.added_mass_coefficient_in_surge,
+                                                              ship_config.added_mass_coefficient_in_sway,
+                                                              ship_config.added_mass_coefficient_in_yaw)
 
         self.t_surge = ship_config.mass_over_linear_friction_coefficient_in_surge
         self.t_sway = ship_config.mass_over_linear_friction_coefficient_in_sway
@@ -152,7 +159,7 @@ class ShipModel:
         self.r = simulation_config.initial_yaw_rate_rad_per_s
         self.omega = simulation_config.initial_propeller_shaft_speed_rad_per_s
         self.x = self.update_state_vector()
-        self.states = np.ndarray(shape=7)
+        self.states = np.empty(7)
 
         # Differentials
         self.d_n = self.d_e = self.d_psi = 0
@@ -217,14 +224,30 @@ class ShipModel:
 
     def set_added_mass(self, surge_coeff, sway_coeff, yaw_coeff):
         ''' Sets the added mass in surge due to surge motion, sway due
-            to sway motion and yaw due to yaw motion according to given coeffs
+            to sway motion and yaw due to yaw motion according to given coeffs.
+
+            args:
+                surge_coeff (float): Added mass coefficient in surge direction due to surge motion
+                sway_coeff (float): Added mass coefficient in sway direction due to sway motion
+                yaw_coeff (float): Added mass coefficient in yaw direction due to yaw motion
+            returns:
+                x_du (float): Added mass in surge
+                y_dv (float): Added mass in sway
+                n_dr (float): Added mass in yaw
         '''
-        self.x_du = self.mass * surge_coeff
-        self.y_dv = self.mass * sway_coeff
-        self.n_dr = self.i_z * yaw_coeff
+        x_du = self.mass * surge_coeff
+        y_dv = self.mass * sway_coeff
+        n_dr = self.i_z * yaw_coeff
+        return x_du, y_dv, n_dr
 
     def mode_selector(self, mcr_me, mcr_hsg):
-        ''' Select mode between mode 1, 2 or 3
+        ''' Select mode between mode 1, 2 or 3 and updates power limitations accordingly.
+
+            Args:
+                mcr_me (float): Rated power of the main engine
+                mcr_hsg (float): Rated power of the hybrid shaft generator
+
+            Returns nothing
         '''
         if self.mso_mode is 1:
             # PTO
@@ -249,14 +272,38 @@ class ShipModel:
             self.p_rated_hsg = 2 * mcr_hsg
 
     def spec_fuel_cons_me(self, load_perc):
+        """ Calculate fuel consumption rate for the main engine.
+
+            Args:
+                load_perc (float): The fraction of the mcr load on the ME
+            Returns:
+                Number of kilograms of fuel per second used by ME
+        """
         rate = self.a_me * load_perc ** 2 + self.b_me * load_perc + self.c_me
         return rate / 3.6e9
 
     def spec_fuel_cons_dg(self, load_perc):
+        """ Calculate fuel consumption rate for a diesel generator.
+
+            Args:
+                load_perc (float): The fraction of the mcr load on the DG
+            Returns:
+                Number of kilograms of fuel per second used by DG
+        """
         rate = self.a_dg * load_perc ** 2 + self.b_dg * load_perc + self.c_dg
         return rate/3.6e9
 
     def load_perc(self, load_perc):
+        """ Calculates the load percentage on the main engine and the HSG based on the
+            operating mode of the machinery system (MSO-mode).
+
+            Args:
+                load_perc (float): Current load on the machinery system as a fraction of the
+                    total power that can be delivered by the machinery system in the current mode.
+            Returns:
+                load_perc_me (float): Current load on the ME as a fraction of ME MCR
+                load_perc_hsg (float): Current load on the HSG as a fraction of HSG MCR
+        """
         if self.mso_mode == 1:
             load_me = load_perc * self.p_rated_me + self.hotel_load
             load_perc_me = load_me / self.p_rated_me
@@ -274,10 +321,14 @@ class ShipModel:
 
     def fuel_consumption(self, load_perc):
         '''
-            :param load_perc: The fraction of produced power over the online
-            power production capacity.
-            :return: fuel consumption rate for ME and HSG, and
-            accumulated fuel consumption for ME, HSG and total
+            Args:
+                load_perc (float): The fraction of produced power over the online power production capacity.
+            Returns:
+                rate_me (float): Fuel consumption rate for the main engine
+                rate_hsg (float): Fuel consumption rate for the HSG
+                fuel_cons_me (float): Accumulated fuel consumption for the ME
+                fuel_cons_hsg (float): Accumulated fuel consumption for the HSG
+                fuel_cons (float): Total accumulated fuel consumption for the ship
         '''
         if self.mso_mode == 1:
             load_me = load_perc * self.p_rated_me + self.hotel_load
