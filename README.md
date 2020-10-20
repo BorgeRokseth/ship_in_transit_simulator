@@ -5,10 +5,10 @@
 
 The "ship-in-transit-simulator" is a set of python classes that can be used to build and run simulations  a ship in transit. 
 
-#Simulation model
+# Simulation model
 
 
-##Ship
+## Ship
 The ship model describes the motion of a ship three 
 degrees of freedom (surge, sway and yaw),
  and contains the following 7 states: 
@@ -81,7 +81,7 @@ on the available power sources.
 a load signal. 
 
 
-#Usage
+# Usage
 
 
 ## Installation
