@@ -1,8 +1,8 @@
-#ship-in-transit-simulator
+##ship-in-transit-simulator
 The "ship-in-transit-simulator" is a set of python classes that can be used to build and run simulations  a ship in transit. 
 
-#The simulation model
-## Ship
+##The simulation model
+### Ship
 The ship model describes the motion of a ship three 
 degrees of freedom (surge, sway and yaw),
  and contains the following 7 states: 
@@ -20,7 +20,7 @@ Coriolis forces, linear and non-linear friction
 forces, environmental forces (described later) and 
 control forces from the main propeller and rudder. 
 
-## Machinery system
+### Machinery system
 The ship model has a single propeller shaft and a 
 single rudder. The propeller shaft can be powered 
 either by the main power source (typically a diesel
@@ -56,29 +56,28 @@ selecting to use only MSO-mode 1 (PTO). The the
 hotel loads and propulsion loads will be served by 
 the main power source.  
   
-## Navigation
+### Navigation
 Navigation can be achieved in one of three ways: 
 * Providing a rudder angle signal 
 * Providing a set point signal for the built-in 
 heading controller
 * Providing a text file specifying a route to 
  follow (described later). 
-## Environmental forces
+### Environmental forces
 The ship is subject to wind forces (constant wind speed), 
 and current forces (constant current speed).
 
-## Speed control
+### Speed control
 Speed control can be achieved by:
 * Providing a signal representing the load (0-1) 
 on the available power sources.
 * Using the built-in speed controller to generate
 a load signal. 
 
-# Usage
-## Installation
+### Installation
 Import models.py into your code. 
 
-## Using the simulator
+### Using the simulator
 Examples on how to setup and use to simulator can 
 be seen in the files under the "examples" folder. 
 
