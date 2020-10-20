@@ -1,18 +1,17 @@
 from unittest import TestCase
 import pandas as pd
-import matplotlib.pyplot as plt
-
 import numpy as np
-from ShipSimulator import ShipConfiguration, \
+import matplotlib.pyplot as plt
+from models import ShipConfiguration, \
     MachinerySystemConfiguration, \
     EnvironmentConfiguration, \
     SimulationConfiguration, ShipDraw, ShipModel
 
 class TestShipModel(TestCase):
-    def make_ms_nyksund_ship(self, route_name: str,
-                             initial_yaw_angle: float,
-                             initial_forward_speed: float,
-                             initial_propeller_shaft_rpm: float):
+    def make_example_ship(self, route_name: str,
+                          initial_yaw_angle: float,
+                          initial_forward_speed: float,
+                          initial_propeller_shaft_rpm: float):
         ship_config = ShipConfiguration(
             coefficient_of_deadweight_to_displacement=0.7,
             bunkers=200000,
@@ -72,10 +71,9 @@ class TestShipModel(TestCase):
     def basic_simulation_results(self, initial_forward_speed: float,
                                  initial_propeller_shaft_rpm: float,
                                  initial_yaw_angle: float):
-        ship = self.make_ms_nyksund_ship(route_name='none',
-                                  initial_forward_speed=initial_forward_speed,
-                                  initial_propeller_shaft_rpm=initial_propeller_shaft_rpm,
-                                  initial_yaw_angle=initial_yaw_angle)
+        ship = self.make_example_ship(route_name='none', initial_yaw_angle=initial_yaw_angle,
+                                      initial_forward_speed=initial_forward_speed,
+                                      initial_propeller_shaft_rpm=initial_propeller_shaft_rpm)
         desired_speed = 8.0
         desired_heading_angle = 15 * np.pi / 180
         while ship.int.time < ship.int.sim_time:
@@ -91,10 +89,9 @@ class TestShipModel(TestCase):
                                  initial_forward_speed: float,
                                  initial_propeller_shaft_rpm: float,
                                  initial_yaw_angle: float):
-        ship = self.make_ms_nyksund_ship(route_name=route_name,
-                                  initial_forward_speed=initial_forward_speed,
-                                  initial_propeller_shaft_rpm=initial_propeller_shaft_rpm,
-                                  initial_yaw_angle=initial_yaw_angle)
+        ship = self.make_example_ship(route_name=route_name, initial_yaw_angle=initial_yaw_angle,
+                                      initial_forward_speed=initial_forward_speed,
+                                      initial_propeller_shaft_rpm=initial_propeller_shaft_rpm)
         desired_speed = 8.0
         ship.int.set_sim_time(np.sqrt(2 * 1000 ** 2) / 7)
         ship.int.set_dt(0.5)
@@ -106,6 +103,34 @@ class TestShipModel(TestCase):
             ship.store_simulation_data(load_perc=engine_load_percentage_setpoint)
             ship.int.next_time()
         return pd.DataFrame().from_dict(ship.simulation_results)
+
+
+    def simulation_with_ship_drawing(self, route_name: str,
+                                     initial_forward_speed: float,
+                                     initial_propeller_shaft_rpm: float,
+                                     initial_yaw_angle: float):
+        ship = self.make_example_ship(route_name=route_name, initial_yaw_angle=initial_yaw_angle,
+                                      initial_forward_speed=initial_forward_speed,
+                                      initial_propeller_shaft_rpm=initial_propeller_shaft_rpm)
+        desired_speed = 8.0
+        ship.int.set_sim_time(np.sqrt(2 * 1000 ** 2) / 7)
+        ship.int.set_dt(0.5)
+        draw_time = ship.int.sim_time / 2
+        draw = True
+        while ship.int.time < ship.int.sim_time:
+            engine_load_percentage_setpoint = ship.loadperc_from_speedref(desired_speed)
+            rudder_angle = -ship.rudderang_from_route()
+            ship.update_differentials(engine_load_percentage_setpoint, rudder_angle)
+            ship.integrate_differentials()
+            ship.store_simulation_data(load_perc=engine_load_percentage_setpoint)
+
+            if ship.int.time > draw_time and draw:
+                ship.ship_snap_shot()
+                draw = False
+
+            ship.int.next_time()
+        return ship.ship_drawings
+
 
     def test_time_progression(self):
         sim_results = self.basic_simulation_results(initial_forward_speed=0,
@@ -124,4 +149,12 @@ class TestShipModel(TestCase):
             self.assertAlmostEqual(n, e, delta=100)
 
 
+    def test_ship_draw(self):
+        ship_drawings = self.simulation_with_ship_drawing(route_name='route.txt',
+                                                          initial_forward_speed=7,
+                                                          initial_propeller_shaft_rpm=400,
+                                                          initial_yaw_angle=40)
+        # Check that data has been stored in the ship drawing
+        self.assertFalse(len(ship_drawings[0]) == 0)
+        self.assertFalse(len(ship_drawings[1]) == 0)
 

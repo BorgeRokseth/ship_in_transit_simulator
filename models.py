@@ -2,7 +2,6 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 from collections import defaultdict
-
 from typing import NamedTuple
 
 class ShipConfiguration(NamedTuple):
@@ -556,7 +555,7 @@ class ShipModel:
         ''' Returns the torque of the main engine as a
             function of the load percentage parameter
         '''
-        if self.omega >= 100:
+        if self.omega >= 100 * np.pi / 30:
             return load_perc * self.p_rel_rated_me / self.omega
         else:
             return 0
@@ -565,7 +564,7 @@ class ShipModel:
         ''' Returns the torque of the HSG as a
             function of the load percentage parameter
         '''
-        if self.omega >= 100:
+        if self.omega >= 100 * np.pi / 30:
             return load_perc * self.p_rel_rated_hsg / self.omega
         else:
             return 0
@@ -953,9 +952,9 @@ class StaticObstacle:
         rad = np.sqrt(abs(rad_2))
         return rad - self.r
 
-    def plot_obst(self):
+    def plot_obst(self, ax):
         ''' This method can be used to plot the obstacle in a
             map-view.
         '''
-        ax = plt.gca()
+        #ax = plt.gca()
         ax.add_patch(plt.Circle((self.e, self.n), radius=self.r, fill=True, color='grey'))
