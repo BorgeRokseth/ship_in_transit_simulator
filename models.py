@@ -64,6 +64,15 @@ class SimulationConfiguration(NamedTuple):
     integration_step: float
     simulation_time: float
 
+class DriftSimulationConfiguration(NamedTuple):
+    initial_north_position_m: float
+    initial_east_position_m: float
+    initial_yaw_angle_rad: float
+    initial_forward_speed_m_per_s: float
+    initial_sideways_speed_m_per_s: float
+    initial_yaw_rate_rad_per_s: float
+    integration_step: float
+    simulation_time: float
 
 class ShipModel:
     ''' Creates a ship model object that can be used to simulate a ship in transit
@@ -737,7 +746,7 @@ class ShipModelWithoutPropulsion:
     '''
     def __init__(self, ship_config: ShipConfiguration,
                  environment_config: EnvironmentConfiguration,
-                 simulation_config: SimulationConfiguration):
+                 simulation_config: DriftSimulationConfiguration):
 
         payload = 0.9 * (ship_config.dead_weight_tonnage - ship_config.bunkers)
         lsw = ship_config.dead_weight_tonnage / ship_config.coefficient_of_deadweight_to_displacement \
