@@ -53,31 +53,35 @@ simulation_setup = SimulationConfiguration(
     initial_forward_speed_m_per_s=7,
     initial_sideways_speed_m_per_s=0,
     initial_yaw_rate_rad_per_s=0,
-    initial_propeller_shaft_speed_rad_per_s=400 * np.pi / 30,
+    initial_propeller_shaft_speed_rad_per_s=200 * np.pi / 30,
     machinery_system_operating_mode=1,
     integration_step=0.5,
     simulation_time=300
 )
+print(simulation_setup.initial_propeller_shaft_speed_rad_per_s * 30 / np.pi)
 
 ship_model = ShipModel(ship_config=ship_config,
                        machinery_config=machinery_config,
                        environment_config=env_config,
                        simulation_config=simulation_setup)
 
+
 desired_heading_radians = 45 * np.pi / 180
 desired_forward_speed_meters_per_second = 8.5
 time_since_last_ship_drawing = 30
+
 while ship_model.int.time < ship_model.int.sim_time:
     # Find appropriate rudder angle and engine throttle
     rudder_angle = -ship_model.rudderang_from_headingref(desired_heading_radians)
     engine_load = ship_model.loadperc_from_speedref(desired_forward_speed_meters_per_second)
 
     # Update and integrate differential equations for current time step
+    ship_model.store_simulation_data(engine_load)
     ship_model.update_differentials(load_perc=engine_load, rudder_angle=rudder_angle)
     ship_model.integrate_differentials()
 
     # Store data for the current time step
-    ship_model.store_simulation_data(engine_load)
+    #ship_model.store_simulation_data(engine_load)
 
     # Make a drawing of the ship from above every 20 second
     if time_since_last_ship_drawing > 30:
@@ -97,7 +101,10 @@ for x, y in zip(ship_model.ship_drawings[1], ship_model.ship_drawings[0]):
     map_ax.plot(x, y, color='black')
 map_ax.set_aspect('equal')
 # Example on plotting time series
-fuel_ifg, fuel_ax = plt.subplots()
-results.plot(x='time [s]', y='fuel rate [kg/s]', ax=fuel_ax)
-
+speed_fig, (rpm_ax, speed_ax) = plt.subplots(2,1)
+results.plot(x='time [s]', y='propeller shaft speed [rpm]', ax=rpm_ax)
+results.plot(x='time [s]', y='forward speed[m/s]', ax=speed_ax)
+eng_fig, (torque_ax, power_ax) = plt.subplots(2,1)
+results.plot(x='time [s]', y='motor torque [Nm]', ax=torque_ax)
+results.plot(x='time [s]', y='motor power [kW]', ax=power_ax)
 plt.show()

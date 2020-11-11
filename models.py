@@ -176,7 +176,7 @@ class ShipModel:
         self.d_omega = 0
 
         # Set up ship control systems
-        self.initialize_shaft_speed_controller(kp=0.1, ki=0.005)
+        self.initialize_shaft_speed_controller(kp=0.05, ki=0.005)
         self.initialize_ship_speed_controller(kp=7, ki=0.13)
         self.initialize_ship_heading_controller(kp=4, kd=90, ki=0.005)
         self.initialize_heading_filter(kp=0.5, kd=10, t=5000)
@@ -615,19 +615,22 @@ class ShipModel:
         ''' Returns the torque of the main engine as a
             function of the load percentage parameter
         '''
-        if self.omega >= 100 * np.pi / 30:
-            return load_perc * self.p_rel_rated_me / self.omega
-        else:
-            return 0
+        #if self.omega >= 1 * np.pi / 30:
+        #    return load_perc * self.p_rel_rated_me / self.omega
+        #else:
+        #    return 0
+        return min(load_perc * self.p_rel_rated_me/(self.omega+0.1), self.p_rel_rated_me/5 * np.pi / 30)
+
 
     def hsg_torque(self, load_perc):
         ''' Returns the torque of the HSG as a
             function of the load percentage parameter
         '''
-        if self.omega >= 100 * np.pi / 30:
-            return load_perc * self.p_rel_rated_hsg / self.omega
-        else:
-            return 0
+        #if self.omega >= 100 * np.pi / 30:
+        #    return load_perc * self.p_rel_rated_hsg / self.omega
+        #else:
+        #    return 0
+        return min(load_perc * self.p_rel_rated_hsg / (self.omega + 1), self.p_rel_rated_hsg/70 * np.pi / 30)
 
     def update_differentials(self, load_perc, rudder_angle):
         ''' This method should be called in the simulation loop. It will
@@ -726,6 +729,8 @@ class ShipModel:
         self.simulation_results['fuel consumption me [kg]'].append(cons_me)
         self.simulation_results['fuel consumption hsg [kg]'].append(cons_hsg)
         self.simulation_results['fuel consumption [kg]'].append(cons)
+        self.simulation_results['motor torque [Nm]'].append(self.main_engine_torque(load_perc))
+        self.simulation_results['motor power [kW]'].append(self.p_rated_me * load_perc / 1000)
         self.fuel_me.append(cons_me)
         self.fuel_hsg.append(cons_hsg)
         self.fuel.append(cons)
