@@ -630,7 +630,7 @@ class ShipModel:
         #    return load_perc * self.p_rel_rated_hsg / self.omega
         #else:
         #    return 0
-        return min(load_perc * self.p_rel_rated_hsg / (self.omega + 1), self.p_rel_rated_hsg/70 * np.pi / 30)
+        return min(load_perc * self.p_rel_rated_hsg / (self.omega + 0.1), self.p_rel_rated_hsg/5 * np.pi / 30)
 
     def update_differentials(self, load_perc, rudder_angle):
         ''' This method should be called in the simulation loop. It will
