@@ -105,6 +105,8 @@ for x, y in zip(ship_model.ship_drawings[1], ship_model.ship_drawings[0]):
 for obstacle in list_of_obstacles:
     obstacle.plot_obst(ax=map_ax)
 
+map_ax.set_aspect('equal')
+
 
 # Example on plotting time series
 fuel_ifg, fuel_ax = plt.subplots()

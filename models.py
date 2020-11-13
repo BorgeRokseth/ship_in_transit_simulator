@@ -576,7 +576,7 @@ class ShipModel:
 
         # Kinetic equation
         M_inv = np.linalg.inv(M_rb)
-        dx = np.dot(M_inv, -np.dot(C_rb, vel) - -np.dot(C_a, vel - v_c) - np.dot(D + D2, vel - v_c)
+        dx = np.dot(M_inv, -np.dot(C_rb, vel) - np.dot(C_a, vel - v_c) - np.dot(D + D2, vel - v_c)
                     + F_wind + F_waves + F_ctrl)
         self.d_u = dx[0]
         self.d_v = dx[1]
