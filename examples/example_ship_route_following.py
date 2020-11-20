@@ -56,7 +56,7 @@ simulation_setup = SimulationConfiguration(
     initial_propeller_shaft_speed_rad_per_s=400 * np.pi / 30,
     machinery_system_operating_mode=1,
     integration_step=0.5,
-    simulation_time=400
+    simulation_time=600
 )
 
 ship_model = ShipModel(ship_config=ship_config,
