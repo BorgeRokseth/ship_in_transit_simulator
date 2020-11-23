@@ -1,5 +1,5 @@
 from models import ShipModel, ShipConfiguration, EnvironmentConfiguration, \
-    MachinerySystemConfiguration, SimulationConfiguration
+    MachinerySystemConfiguration, SimulationConfiguration, MachineryModes, MachineryMode
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -28,7 +28,28 @@ env_config = EnvironmentConfiguration(
     wind_speed=0,
     wind_direction=0
 )
+
+main_engine_capacity = 2160e3
+diesel_gen_capacity = 510e3
+
+pto_mode = MachineryMode(
+    main_engine_capacity=main_engine_capacity,
+    electrical_capacity=2*diesel_gen_capacity,
+    shaft_generator_state="generator"
+)
+mec_mode = MachineryMode(
+    main_engine_capacity=main_engine_capacity,
+    electrical_capacity=diesel_gen_capacity,
+    shaft_generator_state='off'
+)
+
 machinery_config = MachinerySystemConfiguration(
+
+)
+'''
+machinery_config = MachinerySystemConfiguration(
+    hotel_load=200000,
+    machinery_modes=
     mcr_main_engine=2.16e6,
     mcr_hybrid_shaft_generator=0.51e6,
     linear_friction_main_engine=68,
@@ -39,12 +60,11 @@ machinery_config = MachinerySystemConfiguration(
     propeller_diameter=3.1,
     propeller_speed_to_torque_coefficient=7.5,
     propeller_speed_to_thrust_force_coefficient=1.7,
-    hotel_load=200000,
     rated_speed_main_engine_rpm=1000,
     rudder_angle_to_sway_force_coefficient=50e3,
     rudder_angle_to_yaw_force_coefficient=500e3,
     max_rudder_angle_degrees=30
-)
+)'''
 simulation_setup = SimulationConfiguration(
     route_name='none',
     initial_north_position_m=0,

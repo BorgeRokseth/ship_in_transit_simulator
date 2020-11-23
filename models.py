@@ -6,7 +6,8 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 from collections import defaultdict
-from typing import NamedTuple
+from typing import NamedTuple, List
+
 
 class ShipConfiguration(NamedTuple):
     dead_weight_tonnage: float
@@ -24,24 +25,6 @@ class ShipConfiguration(NamedTuple):
     nonlinear_friction_coefficient__in_surge: float
     nonlinear_friction_coefficient__in_sway: float
     nonlinear_friction_coefficient__in_yaw: float
-
-
-class MachinerySystemConfiguration(NamedTuple):
-    hotel_load: float
-    mcr_main_engine: float
-    mcr_hybrid_shaft_generator: float
-    rated_speed_main_engine_rpm: float
-    linear_friction_main_engine: float
-    linear_friction_hybrid_shaft_generator: float
-    gear_ratio_between_main_engine_and_propeller: float
-    gear_ratio_between_hybrid_shaft_generator_and_propeller: float
-    propeller_inertia: float
-    propeller_speed_to_torque_coefficient: float
-    propeller_diameter: float
-    propeller_speed_to_thrust_force_coefficient: float
-    rudder_angle_to_sway_force_coefficient: float
-    rudder_angle_to_yaw_force_coefficient: float
-    max_rudder_angle_degrees: float
 
 
 class EnvironmentConfiguration(NamedTuple):
@@ -64,6 +47,7 @@ class SimulationConfiguration(NamedTuple):
     integration_step: float
     simulation_time: float
 
+
 class DriftSimulationConfiguration(NamedTuple):
     initial_north_position_m: float
     initial_east_position_m: float
@@ -73,6 +57,61 @@ class DriftSimulationConfiguration(NamedTuple):
     initial_yaw_rate_rad_per_s: float
     integration_step: float
     simulation_time: float
+
+
+class MachineryMode(NamedTuple):
+    main_engine_capacity: float
+    electrical_capacity: float
+    shaft_generator_state: str
+    available_propulsion_power = 0
+
+    def update_available_propulsion_power(self, hotel_load):
+        if self.shaft_generator_state == 'motor':
+            self.available_propulsion_power = self.main_engine_capacity + self.electrical_capacity - hotel_load
+        elif self.shaft_generator_state == 'generator':
+            self.available_propulsion_power = self.main_engine_capacity - hotel_load
+        else:  # shaft_generator_state == 'off'
+            self.available_propulsion_power = self.main_engine_capacity
+
+    def load_main_engine(self, load_perc):
+        if self.shaft_generator_state == 'motor':
+            return self.main_engine_capacity + self.electrical_capacity - hotel_load
+        elif self.shaft_generator_state == 'generator':
+            self.available_propulsion_power = self.main_engine_capacity - hotel_load
+        else:  # shaft_generator_state == 'off'
+            self.available_propulsion_power = self.main_engine_capacity
+
+
+class MachineryModes:
+    def __init__(self, list_of_modes: List[MachineryMode]):
+        self.list_of_modes = list_of_modes
+
+
+class MachinerySystemConfiguration(NamedTuple):
+    hotel_load: float
+    machinery_modes: MachineryModes
+    mcr_main_engine: float
+    mcr_hybrid_shaft_generator: float
+    rated_speed_main_engine_rpm: float
+    linear_friction_main_engine: float
+    linear_friction_hybrid_shaft_generator: float
+    gear_ratio_between_main_engine_and_propeller: float
+    gear_ratio_between_hybrid_shaft_generator_and_propeller: float
+    propeller_inertia: float
+    propeller_speed_to_torque_coefficient: float
+    propeller_diameter: float
+    propeller_speed_to_thrust_force_coefficient: float
+    rudder_angle_to_sway_force_coefficient: float
+    rudder_angle_to_yaw_force_coefficient: float
+    max_rudder_angle_degrees: float
+
+    def __init__(self):
+        self.update_available_propulsion_power()
+
+    def update_available_propulsion_power(self):
+        for mode in self.machinery_modes:
+            mode.update_available_propulsion_power(self.hotel_load)
+
 
 class ShipModel:
     ''' Creates a ship model object that can be used to simulate a ship in transit
@@ -91,6 +130,7 @@ class ShipModel:
 
         Simulation results are stored in the instance variable simulation_results
     '''
+
     def __init__(self, ship_config: ShipConfiguration,
                  machinery_config: MachinerySystemConfiguration,
                  environment_config: EnvironmentConfiguration,
@@ -125,23 +165,23 @@ class ShipModel:
         self.kr = ship_config.nonlinear_friction_coefficient__in_yaw  # 400.0  # non-linear friction coeff in yaw
 
         # Machinery system params
-        self.hotel_load = machinery_config.hotel_load  #200000  # 0.2 MW
+        self.hotel_load = machinery_config.hotel_load  # 200000  # 0.2 MW
         self.p_rated_me = machinery_config.mcr_main_engine  # 2160000  # 2.16 MW
-        self.p_rated_hsg = machinery_config.mcr_hybrid_shaft_generator # 590000  # 0.59 MW
+        self.p_rated_hsg = machinery_config.mcr_hybrid_shaft_generator  # 590000  # 0.59 MW
         self.w_rated_me = machinery_config.rated_speed_main_engine_rpm * np.pi / 30  # 1000 * np.pi / 30  # rated speed
-        self.d_me = machinery_config.linear_friction_main_engine  #68.0  # linear friction for main engine speed
+        self.d_me = machinery_config.linear_friction_main_engine  # 68.0  # linear friction for main engine speed
         self.d_hsg = machinery_config.linear_friction_hybrid_shaft_generator  # 57.0  # linear friction for HSG speed
-        self.r_me = machinery_config.gear_ratio_between_main_engine_and_propeller  #0.6  # gear ratio between main engine and propeller
+        self.r_me = machinery_config.gear_ratio_between_main_engine_and_propeller  # 0.6  # gear ratio between main engine and propeller
         self.r_hsg = machinery_config.gear_ratio_between_hybrid_shaft_generator_and_propeller  # 0.6  # gear ratio between main engine and propeller
         self.jp = machinery_config.propeller_inertia  # 6000  # propeller inertia
         self.kp = machinery_config.propeller_speed_to_torque_coefficient  # 7.5  # constant relating omega to torque
-        self.dp = machinery_config.propeller_diameter  #3.1  # propeller diameter
-        self.kt = machinery_config.propeller_speed_to_thrust_force_coefficient  #1.7  # constant relating omega to thrust force
+        self.dp = machinery_config.propeller_diameter  # 3.1  # propeller diameter
+        self.kt = machinery_config.propeller_speed_to_thrust_force_coefficient  # 1.7  # constant relating omega to thrust force
         self.shaft_speed_max = 1.1 * self.w_rated_me * self.r_me  # Used for saturation of power sources
 
         self.c_rudder_v = machinery_config.rudder_angle_to_sway_force_coefficient  # 50000.0  # tuning param for simplified rudder response model
         self.c_rudder_r = machinery_config.rudder_angle_to_yaw_force_coefficient  # 500000.0  # tuning param for simplified rudder response model
-        self.rudder_ang_max = machinery_config.max_rudder_angle_degrees * np.pi / 180 #30 * np.pi / 180  # Maximal rudder angle deflection (both ways)
+        self.rudder_ang_max = machinery_config.max_rudder_angle_degrees * np.pi / 180  # 30 * np.pi / 180  # Maximal rudder angle deflection (both ways)
 
         # Environmental conditions
         self.vel_c = np.array([environment_config.current_velocity_component_from_north,
@@ -300,7 +340,7 @@ class ShipModel:
                 Number of kilograms of fuel per second used by DG
         """
         rate = self.a_dg * load_perc ** 2 + self.b_dg * load_perc + self.c_dg
-        return rate/3.6e9
+        return rate / 3.6e9
 
     def load_perc(self, load_perc):
         """ Calculates the load percentage on the main engine and the HSG based on the
@@ -543,7 +583,7 @@ class ShipModel:
         # System matrices (did not include added mass yet)
         M_rb = np.array([[self.mass + self.x_du, 0, 0],
                          [0, self.mass + self.y_dv, self.mass * self.x_g],
-                         [0, self.mass * self.x_g, self.i_z+ self.n_dr]])
+                         [0, self.mass * self.x_g, self.i_z + self.n_dr]])
         C_rb = np.array([[0, 0, -self.mass * (self.x_g * self.r + self.v)],
                          [0, 0, self.mass * self.u],
                          [self.mass * (self.x_g * self.r + self.v), -self.mass * self.u, 0]])
@@ -615,22 +655,21 @@ class ShipModel:
         ''' Returns the torque of the main engine as a
             function of the load percentage parameter
         '''
-        #if self.omega >= 1 * np.pi / 30:
+        # if self.omega >= 1 * np.pi / 30:
         #    return load_perc * self.p_rel_rated_me / self.omega
-        #else:
+        # else:
         #    return 0
-        return min(load_perc * self.p_rel_rated_me/(self.omega+0.1), self.p_rel_rated_me/5 * np.pi / 30)
-
+        return min(load_perc * self.p_rel_rated_me / (self.omega + 0.1), self.p_rel_rated_me / 5 * np.pi / 30)
 
     def hsg_torque(self, load_perc):
         ''' Returns the torque of the HSG as a
             function of the load percentage parameter
         '''
-        #if self.omega >= 100 * np.pi / 30:
+        # if self.omega >= 100 * np.pi / 30:
         #    return load_perc * self.p_rel_rated_hsg / self.omega
-        #else:
+        # else:
         #    return 0
-        return min(load_perc * self.p_rel_rated_hsg / (self.omega + 0.1), self.p_rel_rated_hsg/5 * np.pi / 30)
+        return min(load_perc * self.p_rel_rated_hsg / (self.omega + 0.1), self.p_rel_rated_hsg / 5 * np.pi / 30)
 
     def update_differentials(self, load_perc, rudder_angle):
         ''' This method should be called in the simulation loop. It will
@@ -749,10 +788,10 @@ class ShipModelWithoutPropulsion:
 
         Simulation results are stored in the instance variable simulation_results
     '''
+
     def __init__(self, ship_config: ShipConfiguration,
                  environment_config: EnvironmentConfiguration,
                  simulation_config: DriftSimulationConfiguration):
-
         payload = 0.9 * (ship_config.dead_weight_tonnage - ship_config.bunkers)
         lsw = ship_config.dead_weight_tonnage / ship_config.coefficient_of_deadweight_to_displacement \
               - ship_config.dead_weight_tonnage
@@ -924,7 +963,7 @@ class ShipModelWithoutPropulsion:
         # System matrices (did not include added mass yet)
         M_rb = np.array([[self.mass + self.x_du, 0, 0],
                          [0, self.mass + self.y_dv, self.mass * self.x_g],
-                         [0, self.mass * self.x_g, self.i_z+ self.n_dr]])
+                         [0, self.mass * self.x_g, self.i_z + self.n_dr]])
         C_rb = np.array([[0, 0, -self.mass * (self.x_g * self.r + self.v)],
                          [0, 0, self.mass * self.u],
                          [self.mass * (self.x_g * self.r + self.v), -self.mass * self.u, 0]])
@@ -1301,5 +1340,5 @@ class StaticObstacle:
         ''' This method can be used to plot the obstacle in a
             map-view.
         '''
-        #ax = plt.gca()
+        # ax = plt.gca()
         ax.add_patch(plt.Circle((self.e, self.n), radius=self.r, fill=True, color='grey'))
