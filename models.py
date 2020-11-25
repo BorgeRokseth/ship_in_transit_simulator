@@ -63,6 +63,9 @@ class SimulationConfiguration(NamedTuple):
     machinery_system_operating_mode: int
     integration_step: float
     simulation_time: float
+    integral_error_speed_controller: float
+    integral_error_shaft_speed_controller: float
+
 
 class DriftSimulationConfiguration(NamedTuple):
     initial_north_position_m: float
@@ -73,6 +76,7 @@ class DriftSimulationConfiguration(NamedTuple):
     initial_yaw_rate_rad_per_s: float
     integration_step: float
     simulation_time: float
+
 
 class ShipModel:
     ''' Creates a ship model object that can be used to simulate a ship in transit
@@ -177,7 +181,9 @@ class ShipModel:
 
         # Set up ship control systems
         self.initialize_shaft_speed_controller(kp=0.05, ki=0.005)
+        self.shaft_speed_controller.set_error_i(simulation_config.integral_error_shaft_speed_controller)
         self.initialize_ship_speed_controller(kp=7, ki=0.13)
+        self.ship_speed_controller.set_error_i(simulation_config.integral_error_speed_controller)
         self.initialize_ship_heading_controller(kp=4, kd=90, ki=0.005)
         self.initialize_heading_filter(kp=0.5, kd=10, t=5000)
 
@@ -621,7 +627,6 @@ class ShipModel:
         #    return 0
         return min(load_perc * self.p_rel_rated_me/(self.omega+0.1), self.p_rel_rated_me/5 * np.pi / 30)
 
-
     def hsg_torque(self, load_perc):
         ''' Returns the torque of the HSG as a
             function of the load percentage parameter
@@ -734,6 +739,10 @@ class ShipModel:
         self.fuel_me.append(cons_me)
         self.fuel_hsg.append(cons_hsg)
         self.fuel.append(cons)
+
+        # Controller data
+        self.simulation_results['shaft speed error integral'].append(self.shaft_speed_controller.error_i)
+        self.simulation_results['ship speed error integral'].append(self.ship_speed_controller.error_i)
 
 
 class ShipModelWithoutPropulsion:

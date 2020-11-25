@@ -53,12 +53,13 @@ simulation_setup = SimulationConfiguration(
     initial_forward_speed_m_per_s=7,
     initial_sideways_speed_m_per_s=0,
     initial_yaw_rate_rad_per_s=0,
-    initial_propeller_shaft_speed_rad_per_s=200 * np.pi / 30,
+    initial_propeller_shaft_speed_rad_per_s=500 * np.pi / 30,
     machinery_system_operating_mode=1,
     integration_step=0.5,
-    simulation_time=300
+    simulation_time=300,
+    integral_error_speed_controller=400,
+    integral_error_shaft_speed_controller=80
 )
-print(simulation_setup.initial_propeller_shaft_speed_rad_per_s * 30 / np.pi)
 
 ship_model = ShipModel(ship_config=ship_config,
                        machinery_config=machinery_config,
@@ -67,7 +68,7 @@ ship_model = ShipModel(ship_config=ship_config,
 
 
 desired_heading_radians = 45 * np.pi / 180
-desired_forward_speed_meters_per_second = 8.5
+desired_forward_speed_meters_per_second = 7
 time_since_last_ship_drawing = 30
 
 while ship_model.int.time < ship_model.int.sim_time:
@@ -100,11 +101,17 @@ map_ax.plot(results['east position [m]'], results['north position [m]'])
 for x, y in zip(ship_model.ship_drawings[1], ship_model.ship_drawings[0]):
     map_ax.plot(x, y, color='black')
 map_ax.set_aspect('equal')
+
 # Example on plotting time series
 speed_fig, (rpm_ax, speed_ax) = plt.subplots(2,1)
 results.plot(x='time [s]', y='propeller shaft speed [rpm]', ax=rpm_ax)
 results.plot(x='time [s]', y='forward speed[m/s]', ax=speed_ax)
+
 eng_fig, (torque_ax, power_ax) = plt.subplots(2,1)
 results.plot(x='time [s]', y='motor torque [Nm]', ax=torque_ax)
 results.plot(x='time [s]', y='motor power [kW]', ax=power_ax)
+
+ctrl_cig, (shaft_ax, ship_ax) = plt.subplots(2, 1)
+results.plot(x='time [s]', y='shaft speed error integral', ax=shaft_ax)
+results.plot(x='time [s]', y='ship speed error integral', ax=ship_ax)
 plt.show()
