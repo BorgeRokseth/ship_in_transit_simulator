@@ -59,6 +59,13 @@ class DriftSimulationConfiguration(NamedTuple):
     simulation_time: float
 
 
+class LoadOnPowerSources(NamedTuple):
+    load_on_main_engine: float
+    load_on_electrical: float
+    load_percentage_on_main_engine: float
+    load_percentage_on_electrical: float
+
+
 class MachineryMode(NamedTuple):
     main_engine_capacity: float
     electrical_capacity: float
@@ -73,14 +80,48 @@ class MachineryMode(NamedTuple):
         else:  # shaft_generator_state == 'off'
             self.available_propulsion_power = self.main_engine_capacity
 
-    def load_main_engine(self, load_perc):
+    def distribute_load(self, load_perc, hotel_load):
+        total_load_propulsion = load_perc * self.available_propulsion_power
         if self.shaft_generator_state == 'motor':
-            return self.main_engine_capacity + self.electrical_capacity - hotel_load
+            load_main_engine = min(total_load_propulsion, self.main_engine_capacity)
+            load_electrical = total_load_propulsion + hotel_load - load_main_engine
+            load_percentage_electrical = load_electrical / self.electrical_capacity
+            if self.main_engine_capacity == 0:
+                load_percentage_main_engine = 0
+            else:
+                load_percentage_main_engine = load_main_engine / self.main_engine_capacity
         elif self.shaft_generator_state == 'generator':
-            self.available_propulsion_power = self.main_engine_capacity - hotel_load
+            # Here the rule is that electrical handles hotel as far as possible
+            load_electrical = min(hotel_load, self.electrical_capacity)
+            load_main_engine = total_load_propulsion + hotel_load - load_electrical
+            load_percentage_main_engine = load_main_engine / self.main_engine_capacity
+            if self.electrical_capacity == 0:
+                load_percentage_electrical = 0
+            else:
+                load_percentage_electrical = load_electrical / self.electrical_capacity
         else:  # shaft_generator_state == 'off'
-            self.available_propulsion_power = self.main_engine_capacity
+            load
 
+        return LoadOnPowerSources(
+            load_on_main_engine=load_main_engine,
+            load_on_electrical=load_electrical,
+            load_percentage_on_main_engine=load_percentage_main_engine,
+            load_percentage_on_electrical=load_percentage_electrical
+        )
+
+
+   # Assume hotel is the only electrical load (other than propulsion)
+
+        # hsg = generator ->
+        #   ME: propulsion + hotel
+        #   El: 0
+        # hsg = off ->
+        #   ME: propulsion
+        #   El: hotel loads
+        # hsg = motor ->
+        #   ME: propulsion - hsg input (how to separate between e.g. pti-mode and propulsion load sharing mode)?
+        #   HSG: hotel loads + hsg input (in pti mode, hsg input = propulsion load)
+        #       The rule is: ME is loaded as up to 100% of available power and then hsg provides the rest
 
 class MachineryModes:
     def __init__(self, list_of_modes: List[MachineryMode]):
@@ -90,8 +131,8 @@ class MachineryModes:
 class MachinerySystemConfiguration(NamedTuple):
     hotel_load: float
     machinery_modes: MachineryModes
-    mcr_main_engine: float
-    mcr_hybrid_shaft_generator: float
+    #mcr_main_engine: float
+    #mcr_hybrid_shaft_generator: float
     rated_speed_main_engine_rpm: float
     linear_friction_main_engine: float
     linear_friction_hybrid_shaft_generator: float
@@ -104,13 +145,6 @@ class MachinerySystemConfiguration(NamedTuple):
     rudder_angle_to_sway_force_coefficient: float
     rudder_angle_to_yaw_force_coefficient: float
     max_rudder_angle_degrees: float
-
-    def __init__(self):
-        self.update_available_propulsion_power()
-
-    def update_available_propulsion_power(self):
-        for mode in self.machinery_modes:
-            mode.update_available_propulsion_power(self.hotel_load)
 
 
 class ShipModel:
@@ -165,7 +199,10 @@ class ShipModel:
         self.kr = ship_config.nonlinear_friction_coefficient__in_yaw  # 400.0  # non-linear friction coeff in yaw
 
         # Machinery system params
+        self.machinery_modes = machinery_config.machinery_modes
         self.hotel_load = machinery_config.hotel_load  # 200000  # 0.2 MW
+        #self.update_available_propulsion_power()
+
         self.p_rated_me = machinery_config.mcr_main_engine  # 2160000  # 2.16 MW
         self.p_rated_hsg = machinery_config.mcr_hybrid_shaft_generator  # 590000  # 0.59 MW
         self.w_rated_me = machinery_config.rated_speed_main_engine_rpm * np.pi / 30  # 1000 * np.pi / 30  # rated speed
@@ -271,6 +308,10 @@ class ShipModel:
 
         self.simulation_results = defaultdict(list)
 
+    def update_available_propulsion_power(self):
+        for mode in self.machinery_modes:
+            mode.update_available_propulsion_power(self.hotel_load)
+
     def set_added_mass(self, surge_coeff, sway_coeff, yaw_coeff):
         ''' Sets the added mass in surge due to surge motion, sway due
             to sway motion and yaw due to yaw motion according to given coeffs.
@@ -289,36 +330,8 @@ class ShipModel:
         n_dr = self.i_z * yaw_coeff
         return x_du, y_dv, n_dr
 
-    def mode_selector(self, mcr_me, mcr_hsg):
-        ''' Select mode between mode 1, 2 or 3 and updates power limitations accordingly.
-
-            Args:
-                mcr_me (float): Rated power of the main engine
-                mcr_hsg (float): Rated power of the hybrid shaft generator
-
-            Returns nothing
-        '''
-        if self.mso_mode is 1:
-            # PTO
-            # ME is online and loaded with hotel loads
-            self.p_rel_rated_me = mcr_me
-            self.p_rel_rated_hsg = 0.0
-            self.p_rated_me = mcr_me
-            self.p_rated_hsg = 0.0
-        elif self.mso_mode is 2:
-            # Mechanical
-            # ME is responsible for only propulsion
-            self.p_rel_rated_me = mcr_me
-            self.p_rel_rated_hsg = 0
-            self.p_rated_me = mcr_me
-            self.p_rated_hsg = mcr_hsg
-        elif self.mso_mode is 3:
-            # PTI with one DG
-            # HSG is responsible for propulsion and hotel
-            self.p_rel_rated_me = 0
-            self.p_rel_rated_hsg = 2 * mcr_hsg
-            self.p_rated_me = 0.0
-            self.p_rated_hsg = 2 * mcr_hsg
+    def mode_selector(self, mode: int):
+        self.mode = self.machinery_modes[mode]
 
     def spec_fuel_cons_me(self, load_perc):
         """ Calculate fuel consumption rate for the main engine.
@@ -343,7 +356,7 @@ class ShipModel:
         return rate / 3.6e9
 
     def load_perc(self, load_perc):
-        """ Calculates the load percentage on the main engine and the HSG based on the
+        """ Calculates the load percentage on the main engine and the diesel_gens based on the
             operating mode of the machinery system (MSO-mode).
 
             Args:
@@ -353,8 +366,11 @@ class ShipModel:
                 load_perc_me (float): Current load on the ME as a fraction of ME MCR
                 load_perc_hsg (float): Current load on the HSG as a fraction of HSG MCR
         """
+
         if self.mso_mode == 1:
-            load_me = load_perc * self.p_rated_me + self.hotel_load
+
+            #load_me = load_perc * self.p_rated_me + self.hotel_load
+            load_me = load_perc * self.mode.load
             load_perc_me = load_me / self.p_rated_me
             load_perc_hsg = 0.0
         elif self.mso_mode == 2:

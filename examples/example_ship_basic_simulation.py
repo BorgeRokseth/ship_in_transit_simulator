@@ -4,7 +4,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 
-# Configure the simulation
+
+main_engine_capacity = 2160e3
+diesel_gen_capacity = 510e3
+hybrid_shaft_gen_as_generator = 'GEN'
+hybrid_shaft_gen_as_motor = 'MOTOR'
+hybrid_shaft_gen_as_offline = 'OFF'
+
 ship_config = ShipConfiguration(
     coefficient_of_deadweight_to_displacement=0.7,
     bunkers=200000,
@@ -29,29 +35,33 @@ env_config = EnvironmentConfiguration(
     wind_direction=0
 )
 
-main_engine_capacity = 2160e3
-diesel_gen_capacity = 510e3
-
 pto_mode = MachineryMode(
     main_engine_capacity=main_engine_capacity,
-    electrical_capacity=2*diesel_gen_capacity,
-    shaft_generator_state="generator"
+    electrical_capacity=0,
+    shaft_generator_state=hybrid_shaft_gen_as_generator
 )
 mec_mode = MachineryMode(
     main_engine_capacity=main_engine_capacity,
     electrical_capacity=diesel_gen_capacity,
-    shaft_generator_state='off'
+    shaft_generator_state=hybrid_shaft_gen_as_offline
+)
+
+pti_mode = MachineryMode(
+    main_engine_capacity=0,
+    electrical_capacity=2 * diesel_gen_capacity,
+    shaft_generator_state=hybrid_shaft_gen_as_motor
+)
+
+mso_modes = MachineryModes(
+    [pto_mode,
+     mec_mode,
+     pti_mode]
 )
 
 machinery_config = MachinerySystemConfiguration(
-
-)
-'''
-machinery_config = MachinerySystemConfiguration(
-    hotel_load=200000,
-    machinery_modes=
-    mcr_main_engine=2.16e6,
-    mcr_hybrid_shaft_generator=0.51e6,
+    hotel_load=200e3,
+    machinery_modes=mso_modes,
+    rated_speed_main_engine_rpm=1000,
     linear_friction_main_engine=68,
     linear_friction_hybrid_shaft_generator=57,
     gear_ratio_between_main_engine_and_propeller=0.6,
@@ -60,11 +70,11 @@ machinery_config = MachinerySystemConfiguration(
     propeller_diameter=3.1,
     propeller_speed_to_torque_coefficient=7.5,
     propeller_speed_to_thrust_force_coefficient=1.7,
-    rated_speed_main_engine_rpm=1000,
-    rudder_angle_to_sway_force_coefficient=50e3,
+    max_rudder_angle_degrees=30,
     rudder_angle_to_yaw_force_coefficient=500e3,
-    max_rudder_angle_degrees=30
-)'''
+    rudder_angle_to_sway_force_coefficient=50e3
+)
+
 simulation_setup = SimulationConfiguration(
     route_name='none',
     initial_north_position_m=0,
@@ -78,13 +88,11 @@ simulation_setup = SimulationConfiguration(
     integration_step=0.5,
     simulation_time=300
 )
-print(simulation_setup.initial_propeller_shaft_speed_rad_per_s * 30 / np.pi)
 
 ship_model = ShipModel(ship_config=ship_config,
                        machinery_config=machinery_config,
                        environment_config=env_config,
                        simulation_config=simulation_setup)
-
 
 desired_heading_radians = 45 * np.pi / 180
 desired_forward_speed_meters_per_second = 8.5
@@ -101,7 +109,7 @@ while ship_model.int.time < ship_model.int.sim_time:
     ship_model.integrate_differentials()
 
     # Store data for the current time step
-    #ship_model.store_simulation_data(engine_load)
+    # ship_model.store_simulation_data(engine_load)
 
     # Make a drawing of the ship from above every 20 second
     if time_since_last_ship_drawing > 30:
@@ -121,10 +129,10 @@ for x, y in zip(ship_model.ship_drawings[1], ship_model.ship_drawings[0]):
     map_ax.plot(x, y, color='black')
 map_ax.set_aspect('equal')
 # Example on plotting time series
-speed_fig, (rpm_ax, speed_ax) = plt.subplots(2,1)
+speed_fig, (rpm_ax, speed_ax) = plt.subplots(2, 1)
 results.plot(x='time [s]', y='propeller shaft speed [rpm]', ax=rpm_ax)
 results.plot(x='time [s]', y='forward speed[m/s]', ax=speed_ax)
-eng_fig, (torque_ax, power_ax) = plt.subplots(2,1)
+eng_fig, (torque_ax, power_ax) = plt.subplots(2, 1)
 results.plot(x='time [s]', y='motor torque [Nm]', ax=torque_ax)
 results.plot(x='time [s]', y='motor power [kW]', ax=power_ax)
 plt.show()
