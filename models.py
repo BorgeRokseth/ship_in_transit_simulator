@@ -66,11 +66,17 @@ class LoadOnPowerSources(NamedTuple):
     load_percentage_on_electrical: float
 
 
-class MachineryMode(NamedTuple):
+class MachineryModeParams(NamedTuple):
     main_engine_capacity: float
     electrical_capacity: float
     shaft_generator_state: str
-    available_propulsion_power = 0
+
+class MachineryMode:
+    def __init__(self, params: MachineryModeParams):
+        self.main_engine_capacity = params.main_engine_capacity
+        self.electrical_capacity = params.electrical_capacity
+        self.shaft_generator_state = params.shaft_generator_state
+        self.available_propulsion_power = 0
 
     def update_available_propulsion_power(self, hotel_load):
         if self.shaft_generator_state == 'motor':
@@ -100,7 +106,10 @@ class MachineryMode(NamedTuple):
             else:
                 load_percentage_electrical = load_electrical / self.electrical_capacity
         else:  # shaft_generator_state == 'off'
-            load
+            load_main_engine = total_load_propulsion
+            load_electrical = hotel_load
+            load_percentage_main_engine = load_main_engine / self.main_engine_capacity
+            load_percentage_electrical = load_electrical / self.electrical_capacity
 
         return LoadOnPowerSources(
             load_on_main_engine=load_main_engine,
@@ -201,7 +210,9 @@ class ShipModel:
         # Machinery system params
         self.machinery_modes = machinery_config.machinery_modes
         self.hotel_load = machinery_config.hotel_load  # 200000  # 0.2 MW
-        #self.update_available_propulsion_power()
+        self.update_available_propulsion_power()
+        mode = SimulationConfiguration.machinery_system_operating_mode
+        self.mode = self.machinery_modes.list_of_modes[mode]
 
         self.p_rated_me = machinery_config.mcr_main_engine  # 2160000  # 2.16 MW
         self.p_rated_hsg = machinery_config.mcr_hybrid_shaft_generator  # 590000  # 0.59 MW
@@ -232,9 +243,9 @@ class ShipModel:
         self.p_rel_rated_me = 0.0
 
         # Configure machinery system according to self.mso
-        self.mso_mode = simulation_config.machinery_system_operating_mode
-        self.mode_selector(machinery_config.mcr_main_engine,
-                           machinery_config.mcr_hybrid_shaft_generator)
+        #self.mso_mode = simulation_config.machinery_system_operating_mode
+        #self.mode_selector(machinery_config.mcr_main_engine,
+        #                   machinery_config.mcr_hybrid_shaft_generator)
 
         # Initial states (can be altered using self.set_state_vector(x))
         self.n = simulation_config.initial_north_position_m
@@ -309,7 +320,7 @@ class ShipModel:
         self.simulation_results = defaultdict(list)
 
     def update_available_propulsion_power(self):
-        for mode in self.machinery_modes:
+        for mode in self.machinery_modes.list_of_modes:
             mode.update_available_propulsion_power(self.hotel_load)
 
     def set_added_mass(self, surge_coeff, sway_coeff, yaw_coeff):
@@ -331,7 +342,7 @@ class ShipModel:
         return x_du, y_dv, n_dr
 
     def mode_selector(self, mode: int):
-        self.mode = self.machinery_modes[mode]
+        self.mode = self.machinery_modes.list_of_modes[mode]
 
     def spec_fuel_cons_me(self, load_perc):
         """ Calculate fuel consumption rate for the main engine.
@@ -366,9 +377,9 @@ class ShipModel:
                 load_perc_me (float): Current load on the ME as a fraction of ME MCR
                 load_perc_hsg (float): Current load on the HSG as a fraction of HSG MCR
         """
+        load_data = self.mode.distribute_load(load_perc=load_perc, hotel_load=self.hotel_load)
 
-        if self.mso_mode == 1:
-
+        '''if self.mso_mode == 1:
             #load_me = load_perc * self.p_rated_me + self.hotel_load
             load_me = load_perc * self.mode.load
             load_perc_me = load_me / self.p_rated_me
@@ -381,8 +392,9 @@ class ShipModel:
         elif self.mso_mode == 3:
             load_hsg = (load_perc * self.p_rated_hsg + self.hotel_load)
             load_perc_me = 0.0
-            load_perc_hsg = load_hsg / self.p_rated_hsg
-        return load_perc_me, load_perc_hsg
+            load_perc_hsg = load_hsg / self.p_rated_hsg'''
+        return load_data.load_percentage_on_main_engine, load_data.load_percentage_on_electrical
+
 
     def fuel_consumption(self, load_perc):
         '''
