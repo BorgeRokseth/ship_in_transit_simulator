@@ -119,19 +119,6 @@ class MachineryMode:
         )
 
 
-   # Assume hotel is the only electrical load (other than propulsion)
-
-        # hsg = generator ->
-        #   ME: propulsion + hotel
-        #   El: 0
-        # hsg = off ->
-        #   ME: propulsion
-        #   El: hotel loads
-        # hsg = motor ->
-        #   ME: propulsion - hsg input (how to separate between e.g. pti-mode and propulsion load sharing mode)?
-        #   HSG: hotel loads + hsg input (in pti mode, hsg input = propulsion load)
-        #       The rule is: ME is loaded as up to 100% of available power and then hsg provides the rest
-
 class MachineryModes:
     def __init__(self, list_of_modes: List[MachineryMode]):
         self.list_of_modes = list_of_modes
@@ -280,7 +267,7 @@ class ShipModel:
 
         # Fuel
         self.fuel_cons_me = 0.0  # Initial fuel cons for ME
-        self.fuel_cons_hsg = 0.0  # Initial fuel cons for HSG
+        self.fuel_cons_electrical = 0.0  # Initial fuel cons for HSG
         self.fuel_cons = 0.0  # Initial total fuel cons
         self.power_me = []  # Array for storing ME power cons. data
         self.power_hsg = []  # Array for storing HSG power cons. data
@@ -378,21 +365,6 @@ class ShipModel:
                 load_perc_hsg (float): Current load on the HSG as a fraction of HSG MCR
         """
         load_data = self.mode.distribute_load(load_perc=load_perc, hotel_load=self.hotel_load)
-
-        '''if self.mso_mode == 1:
-            #load_me = load_perc * self.p_rated_me + self.hotel_load
-            load_me = load_perc * self.mode.load
-            load_perc_me = load_me / self.p_rated_me
-            load_perc_hsg = 0.0
-        elif self.mso_mode == 2:
-            load_me = load_perc * self.p_rated_me
-            load_perc_me = load_me / self.p_rated_me
-            load_hsg = self.hotel_load
-            load_perc_hsg = load_hsg / self.p_rated_hsg
-        elif self.mso_mode == 3:
-            load_hsg = (load_perc * self.p_rated_hsg + self.hotel_load)
-            load_perc_me = 0.0
-            load_perc_hsg = load_hsg / self.p_rated_hsg'''
         return load_data.load_percentage_on_main_engine, load_data.load_percentage_on_electrical
 
 
@@ -406,6 +378,7 @@ class ShipModel:
                 fuel_cons_me (float): Accumulated fuel consumption for the ME
                 fuel_cons_hsg (float): Accumulated fuel consumption for the HSG
                 fuel_cons (float): Total accumulated fuel consumption for the ship
+        '''
         '''
         if self.mso_mode == 1:
             load_me = load_perc * self.p_rated_me + self.hotel_load
@@ -424,11 +397,24 @@ class ShipModel:
             load_perc_hsg = load_hsg / self.p_rated_hsg
             rate_me = 0.0
             rate_hsg = load_hsg * self.spec_fuel_cons_dg(load_perc_hsg)
+        '''
+        load_data = self.mode.distribute_load(load_perc=load_perc, hotel_load=self.hotel_load)
+        if load_data.load_on_main_engine == 0:
+            rate_me = 0
+        else:
+            rate_me = load_data.load_on_main_engine \
+                      * self.spec_fuel_cons_me(load_data.load_percentage_on_main_engine)
+
+        if load_data.load_percentage_on_electrical == 0:
+            rate_electrical = 0
+        else:
+            rate_electrical = load_data.load_on_electrical \
+                              * self.spec_fuel_cons_dg(load_data.load_percentage_on_electrical)
 
         self.fuel_cons_me = self.fuel_cons_me + rate_me * self.int.dt
-        self.fuel_cons_hsg = self.fuel_cons_hsg + rate_hsg * self.int.dt
-        self.fuel_cons = self.fuel_cons + (rate_me + rate_hsg) * self.int.dt
-        return rate_me, rate_hsg, self.fuel_cons_me, self.fuel_cons_hsg, self.fuel_cons
+        self.fuel_cons_electrical = self.fuel_cons_electrical + rate_electrical * self.int.dt
+        self.fuel_cons = self.fuel_cons + (rate_me + rate_electrical) * self.int.dt
+        return rate_me, rate_electrical, self.fuel_cons_me, self.fuel_cons_hsg, self.fuel_cons
 
     def get_wind_force(self):
         ''' This method calculates the forces due to the relative
