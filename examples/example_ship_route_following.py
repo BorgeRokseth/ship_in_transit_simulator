@@ -1,8 +1,16 @@
 from models import ShipModel, ShipConfiguration, EnvironmentConfiguration, \
-    MachinerySystemConfiguration, SimulationConfiguration, StaticObstacle
+    MachinerySystemConfiguration, SimulationConfiguration, StaticObstacle, \
+    MachineryMode, MachineryModeParams, MachineryModes
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+
+
+main_engine_capacity = 2160e3
+diesel_gen_capacity = 510e3
+hybrid_shaft_gen_as_generator = 'GEN'
+hybrid_shaft_gen_as_motor = 'MOTOR'
+hybrid_shaft_gen_as_offline = 'OFF'
 
 # Configure the simulation
 ship_config = ShipConfiguration(
@@ -28,9 +36,20 @@ env_config = EnvironmentConfiguration(
     wind_speed=5,
     wind_direction=0
 )
+
+mec_mode_params = MachineryModeParams(
+    main_engine_capacity=main_engine_capacity,
+    electrical_capacity=diesel_gen_capacity,
+    shaft_generator_state=hybrid_shaft_gen_as_offline
+)
+mec_mode = MachineryMode(params=mec_mode_params)
+
+mso_modes = MachineryModes(
+    [mec_mode]
+)
+
 machinery_config = MachinerySystemConfiguration(
-    mcr_main_engine=2.16e6,
-    mcr_hybrid_shaft_generator=0.51e6,
+    machinery_modes=mso_modes,
     linear_friction_main_engine=68,
     linear_friction_hybrid_shaft_generator=57,
     gear_ratio_between_main_engine_and_propeller=0.6,
@@ -54,9 +73,9 @@ simulation_setup = SimulationConfiguration(
     initial_sideways_speed_m_per_s=0,
     initial_yaw_rate_rad_per_s=0,
     initial_propeller_shaft_speed_rad_per_s=400 * np.pi / 30,
-    machinery_system_operating_mode=1,
+    machinery_system_operating_mode=0,
     integration_step=0.5,
-    simulation_time=600
+    simulation_time=600,
 )
 
 ship_model = ShipModel(ship_config=ship_config,
