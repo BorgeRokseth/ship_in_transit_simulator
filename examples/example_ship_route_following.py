@@ -20,7 +20,8 @@ ship_config = ShipConfiguration(
     mass_over_linear_friction_coefficient_in_yaw=90,
     nonlinear_friction_coefficient__in_surge=2400,
     nonlinear_friction_coefficient__in_sway=4000,
-    nonlinear_friction_coefficient__in_yaw=400
+    nonlinear_friction_coefficient__in_yaw=400,
+
 )
 env_config = EnvironmentConfiguration(
     current_velocity_component_from_north=0,
@@ -56,7 +57,9 @@ simulation_setup = SimulationConfiguration(
     initial_propeller_shaft_speed_rad_per_s=400 * np.pi / 30,
     machinery_system_operating_mode=1,
     integration_step=0.5,
-    simulation_time=600
+    simulation_time=600,
+    integral_error_shaft_speed_controller=60,
+    integral_error_speed_controller=400
 )
 
 ship_model = ShipModel(ship_config=ship_config,

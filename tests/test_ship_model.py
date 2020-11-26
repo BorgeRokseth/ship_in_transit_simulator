@@ -64,7 +64,9 @@ class TestShipModel(TestCase):
             initial_propeller_shaft_speed_rad_per_s=initial_propeller_shaft_rpm * np.pi / 30,
             machinery_system_operating_mode=1,
             integration_step=1,
-            simulation_time=2
+            simulation_time=2,
+            integral_error_speed_controller=0,
+            integral_error_shaft_speed_controller=0
         )
         return ShipModel(ship_config, machinery_config, env_config, simulation_setup)
 
