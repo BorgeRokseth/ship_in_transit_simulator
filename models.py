@@ -207,11 +207,11 @@ class ShipModel:
         self.machinery_modes = machinery_config.machinery_modes
         self.hotel_load = machinery_config.hotel_load  # 200000  # 0.2 MW
         self.update_available_propulsion_power()
-        mode = SimulationConfiguration.machinery_system_operating_mode
+        mode = simulation_config.machinery_system_operating_mode
         self.mode = self.machinery_modes.list_of_modes[mode]
 
-        self.p_rated_me = machinery_config.mcr_main_engine  # 2160000  # 2.16 MW
-        self.p_rated_hsg = machinery_config.mcr_hybrid_shaft_generator  # 590000  # 0.59 MW
+        #self.p_rated_me = machinery_config.mcr_main_engine  # 2160000  # 2.16 MW
+        #self.p_rated_hsg = machinery_config.mcr_hybrid_shaft_generator  # 590000  # 0.59 MW
         self.w_rated_me = machinery_config.rated_speed_main_engine_rpm * np.pi / 30  # 1000 * np.pi / 30  # rated speed
         self.d_me = machinery_config.linear_friction_main_engine  # 68.0  # linear friction for main engine speed
         self.d_hsg = machinery_config.linear_friction_hybrid_shaft_generator  # 57.0  # linear friction for HSG speed
@@ -423,7 +423,7 @@ class ShipModel:
         self.fuel_cons_me = self.fuel_cons_me + rate_me * self.int.dt
         self.fuel_cons_electrical = self.fuel_cons_electrical + rate_electrical * self.int.dt
         self.fuel_cons = self.fuel_cons + (rate_me + rate_electrical) * self.int.dt
-        return rate_me, rate_electrical, self.fuel_cons_me, self.fuel_cons_hsg, self.fuel_cons
+        return rate_me, rate_electrical, self.fuel_cons_me, self.fuel_cons_electrical, self.fuel_cons
 
     def get_wind_force(self):
         ''' This method calculates the forces due to the relative
@@ -761,33 +761,17 @@ class ShipModel:
         self.simulation_results['commanded load fraction [-]'].append(load_perc)
         self.simulation_results['commanded load fraction me [-]'].append(load_perc_me)
         self.simulation_results['commanded load fraction hsg [-]'].append(load_perc_hsg)
-        if self.mso_mode == 1:
-            power_me = load_perc * self.p_rated_me + self.hotel_load
-            power_hsg = load_perc * self.p_rated_hsg
-            self.simulation_results['power me [kw]'].append(power_me / 1000)
-            self.simulation_results['rated power me [kw]'].append(self.p_rated_me / 1000)
-            self.simulation_results['power hsg [kw]'].append(power_hsg / 1000)
-            self.simulation_results['rated power hsg [kw]'].append(self.p_rated_hsg / 1000)
-            self.simulation_results['power [kw]'].append((power_me + power_hsg) / 1000)
-            self.simulation_results['propulsion power [kw]'].append((load_perc * self.p_rated_me) / 1000)
-        elif self.mso_mode == 2:
-            power_me = load_perc * self.p_rated_me
-            power_hsg = self.hotel_load
-            self.simulation_results['power me [kw]'].append(power_me / 1000)
-            self.simulation_results['rated power me [kw]'].append(self.p_rated_me / 1000)
-            self.simulation_results['power hsg [kw]'].append(power_hsg / 1000)
-            self.simulation_results['rated power hsg [kw]'].append(self.p_rated_hsg / 1000)
-            self.simulation_results['power [kw]'].append((power_me + power_hsg) / 1000)
-            self.simulation_results['propulsion power [kw]'].append(power_me / 1000)
-        elif self.mso_mode == 3:
-            power_me = load_perc * self.p_rated_me
-            power_hsg = load_perc * self.p_rated_hsg + self.hotel_load
-            self.simulation_results['power me [kw]'].append(power_me / 1000)
-            self.simulation_results['rated power me [kw]'].append(self.p_rated_me / 1000)
-            self.simulation_results['power hsg [kw]'].append(power_hsg / 1000)
-            self.simulation_results['rated power hsg [kw]'].append(self.p_rated_hsg / 1000)
-            self.simulation_results['power [kw]'].append((power_me + power_hsg) / 1000)
-            self.simulation_results['propulsion power [kw]'].append(load_perc * self.p_rated_hsg / 1000)
+
+        load_data = self.mode.distribute_load(load_perc=load_perc, hotel_load=self.hotel_load)
+        self.simulation_results['power me [kw]'].append(load_data.load_on_main_engine / 1000)
+        self.simulation_results['available power me [kw]'].append(self.mode.main_engine_capacity / 1000)
+        self.simulation_results['power electrical [kw]'].append(load_data.load_on_electrical / 1000)
+        self.simulation_results['available power electrical [kw]'].append(self.mode.electrical_capacity / 1000)
+        self.simulation_results['power [kw]'].append((load_data.load_on_electrical
+                                                      + load_data.load_on_main_engine) / 1000)
+        self.simulation_results['propulsion power [kw]'].append((load_perc
+                                                                 * self.mode.available_propulsion_power) / 1000)
+
         rate_me, rate_hsg, cons_me, cons_hsg, cons = self.fuel_consumption(load_perc)
         self.simulation_results['fuel rate me [kg/s]'].append(rate_me)
         self.simulation_results['fuel rate hsg [kg/s]'].append(rate_hsg)
@@ -796,7 +780,6 @@ class ShipModel:
         self.simulation_results['fuel consumption hsg [kg]'].append(cons_hsg)
         self.simulation_results['fuel consumption [kg]'].append(cons)
         self.simulation_results['motor torque [Nm]'].append(self.main_engine_torque(load_perc))
-        self.simulation_results['motor power [kW]'].append(self.p_rated_me * load_perc / 1000)
         self.fuel_me.append(cons_me)
         self.fuel_hsg.append(cons_hsg)
         self.fuel.append(cons)

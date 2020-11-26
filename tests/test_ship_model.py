@@ -5,13 +5,24 @@ import matplotlib.pyplot as plt
 from models import ShipConfiguration, \
     MachinerySystemConfiguration, \
     EnvironmentConfiguration, \
-    SimulationConfiguration, ShipDraw, ShipModel
+    SimulationConfiguration,\
+    ShipDraw, ShipModel,\
+    MachineryModes,\
+    MachineryModeParams,\
+    MachineryMode
 
 class TestShipModel(TestCase):
     def make_example_ship(self, route_name: str,
                           initial_yaw_angle: float,
                           initial_forward_speed: float,
                           initial_propeller_shaft_rpm: float):
+
+        main_engine_capacity = 2160e3
+        diesel_gen_capacity = 510e3
+        hybrid_shaft_gen_as_generator = 'GEN'
+        hybrid_shaft_gen_as_motor = 'MOTOR'
+        hybrid_shaft_gen_as_offline = 'OFF'
+
         ship_config = ShipConfiguration(
             coefficient_of_deadweight_to_displacement=0.7,
             bunkers=200000,
@@ -36,9 +47,37 @@ class TestShipModel(TestCase):
             wind_direction=0
         )
 
+        pto_mode_params = MachineryModeParams(
+            main_engine_capacity=main_engine_capacity,
+            electrical_capacity=0,
+            shaft_generator_state=hybrid_shaft_gen_as_generator
+        )
+        pto_mode = MachineryMode(params=pto_mode_params)
+
+        mec_mode_params = MachineryModeParams(
+            main_engine_capacity=main_engine_capacity,
+            electrical_capacity=diesel_gen_capacity,
+            shaft_generator_state=hybrid_shaft_gen_as_offline
+        )
+        mec_mode = MachineryMode(params=mec_mode_params)
+
+        pti_mode_params = MachineryModeParams(
+            main_engine_capacity=0,
+            electrical_capacity=2 * diesel_gen_capacity,
+            shaft_generator_state=hybrid_shaft_gen_as_motor
+        )
+        pti_mode = MachineryMode(params=pti_mode_params)
+
+        mso_modes = MachineryModes(
+            [pto_mode,
+             mec_mode,
+             pti_mode]
+        )
+
         machinery_config = MachinerySystemConfiguration(
-            mcr_main_engine=2.16e6,
-            mcr_hybrid_shaft_generator=0.51e6,
+            hotel_load=200e3,
+            machinery_modes=mso_modes,
+            rated_speed_main_engine_rpm=1000,
             linear_friction_main_engine=68,
             linear_friction_hybrid_shaft_generator=57,
             gear_ratio_between_main_engine_and_propeller=0.6,
@@ -47,12 +86,11 @@ class TestShipModel(TestCase):
             propeller_diameter=3.1,
             propeller_speed_to_torque_coefficient=7.5,
             propeller_speed_to_thrust_force_coefficient=1.7,
-            hotel_load=200000,
-            rated_speed_main_engine_rpm=1000,
-            rudder_angle_to_sway_force_coefficient=50e3,
+            max_rudder_angle_degrees=30,
             rudder_angle_to_yaw_force_coefficient=500e3,
-            max_rudder_angle_degrees=30
+            rudder_angle_to_sway_force_coefficient=50e3
         )
+
         simulation_setup = SimulationConfiguration(
             route_name=route_name,
             initial_north_position_m=0,

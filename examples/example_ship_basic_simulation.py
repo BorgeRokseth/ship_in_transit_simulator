@@ -1,5 +1,6 @@
 from models import ShipModel, ShipConfiguration, EnvironmentConfiguration, \
-    MachinerySystemConfiguration, SimulationConfiguration, MachineryModes, MachineryMode
+    MachinerySystemConfiguration, SimulationConfiguration, MachineryModes, \
+    MachineryMode, MachineryModeParams
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -35,22 +36,26 @@ env_config = EnvironmentConfiguration(
     wind_direction=0
 )
 
-pto_mode = MachineryMode(
+pto_mode_params = MachineryModeParams(
     main_engine_capacity=main_engine_capacity,
     electrical_capacity=0,
     shaft_generator_state=hybrid_shaft_gen_as_generator
 )
-mec_mode = MachineryMode(
+pto_mode = MachineryMode(params=pto_mode_params)
+
+mec_mode_params = MachineryModeParams(
     main_engine_capacity=main_engine_capacity,
     electrical_capacity=diesel_gen_capacity,
     shaft_generator_state=hybrid_shaft_gen_as_offline
 )
+mec_mode = MachineryMode(params=mec_mode_params)
 
-pti_mode = MachineryMode(
+pti_mode_params = MachineryModeParams(
     main_engine_capacity=0,
     electrical_capacity=2 * diesel_gen_capacity,
     shaft_generator_state=hybrid_shaft_gen_as_motor
 )
+pti_mode = MachineryMode(params=pti_mode_params)
 
 mso_modes = MachineryModes(
     [pto_mode,
@@ -134,5 +139,5 @@ results.plot(x='time [s]', y='propeller shaft speed [rpm]', ax=rpm_ax)
 results.plot(x='time [s]', y='forward speed[m/s]', ax=speed_ax)
 eng_fig, (torque_ax, power_ax) = plt.subplots(2, 1)
 results.plot(x='time [s]', y='motor torque [Nm]', ax=torque_ax)
-results.plot(x='time [s]', y='motor power [kW]', ax=power_ax)
+results.plot(x='time [s]', y='power me [kw]', ax=power_ax)
 plt.show()
