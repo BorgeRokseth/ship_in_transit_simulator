@@ -131,4 +131,5 @@ map_ax.set_aspect('equal')
 fuel_ifg, fuel_ax = plt.subplots()
 results.plot(x='time [s]', y='power [kw]', ax=fuel_ax)
 
+
 plt.show()

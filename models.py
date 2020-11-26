@@ -71,6 +71,7 @@ class MachineryModeParams(NamedTuple):
     electrical_capacity: float
     shaft_generator_state: str
 
+
 class MachineryMode:
     def __init__(self, params: MachineryModeParams):
         self.main_engine_capacity = params.main_engine_capacity
@@ -844,6 +845,7 @@ class ShipModelWithoutPropulsion:
         # Differentials
         self.d_n = self.d_e = self.d_psi = 0
         self.d_u = self.d_v = self.d_r = 0
+        self.hello = 'Hello'
 
         # Set up integration
         self.int = EulerInt()  # Instantiate the Euler integrator
@@ -1063,6 +1065,7 @@ class ShipModelWithoutPropulsion:
         self.simulation_results['forward speed[m/s]'].append(self.u)
         self.simulation_results['sideways speed [m/s]'].append(self.v)
         self.simulation_results['yaw rate [deg/sec]'].append(self.r * 180 / np.pi)
+        self.simulation_results['wind speed [m/sec]'].append(self.wind_speed)
 
 
 class ControllerLib:

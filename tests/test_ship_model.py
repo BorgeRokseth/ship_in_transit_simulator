@@ -1,7 +1,6 @@
 from unittest import TestCase
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 from models import ShipConfiguration, \
     MachinerySystemConfiguration, \
     EnvironmentConfiguration, \
@@ -12,7 +11,8 @@ from models import ShipConfiguration, \
     MachineryMode
 
 class TestShipModel(TestCase):
-    def make_example_ship(self, route_name: str,
+    @staticmethod
+    def make_example_ship(route_name: str,
                           initial_yaw_angle: float,
                           initial_forward_speed: float,
                           initial_propeller_shaft_rpm: float):
@@ -169,7 +169,6 @@ class TestShipModel(TestCase):
             ship.int.next_time()
         return ship.ship_drawings
 
-
     def test_time_progression(self):
         sim_results = self.basic_simulation_results(initial_forward_speed=0,
                                                     initial_propeller_shaft_rpm=0,
@@ -185,7 +184,6 @@ class TestShipModel(TestCase):
 
         for n, e in zip(sim_results['north position [m]'], sim_results['east position [m]']):
             self.assertAlmostEqual(n, e, delta=100)
-
 
     def test_ship_draw(self):
         ship_drawings = self.simulation_with_ship_drawing(route_name='route.txt',
