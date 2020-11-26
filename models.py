@@ -77,14 +77,23 @@ class MachineryMode:
         self.electrical_capacity = params.electrical_capacity
         self.shaft_generator_state = params.shaft_generator_state
         self.available_propulsion_power = 0
+        self.available_propulsion_power_main_engine = 0
+        self.available_propulsion_power_electrical = 0
 
     def update_available_propulsion_power(self, hotel_load):
         if self.shaft_generator_state == 'motor':
             self.available_propulsion_power = self.main_engine_capacity + self.electrical_capacity - hotel_load
+            self.available_propulsion_power_main_engine = self.main_engine_capacity
+            self.available_propulsion_power_electrical = self.electrical_capacity - hotel_load
         elif self.shaft_generator_state == 'generator':
             self.available_propulsion_power = self.main_engine_capacity - hotel_load
+            self.available_propulsion_power_main_engine = self.main_engine_capacity - hotel_load
+            self.available_propulsion_power_electrical = 0
         else:  # shaft_generator_state == 'off'
             self.available_propulsion_power = self.main_engine_capacity
+            self.available_propulsion_power_main_engine = self.main_engine_capacity
+            self.available_propulsion_power_electrical = 0
+
 
     def distribute_load(self, load_perc, hotel_load):
         total_load_propulsion = load_perc * self.available_propulsion_power
@@ -673,7 +682,9 @@ class ShipModel:
         #    return load_perc * self.p_rel_rated_me / self.omega
         # else:
         #    return 0
-        return min(load_perc * self.p_rel_rated_me / (self.omega + 0.1), self.p_rel_rated_me / 5 * np.pi / 30)
+        #return min(load_perc * self.p_rel_rated_me / (self.omega + 0.1), self.p_rel_rated_me / 5 * np.pi / 30)
+        return min(load_perc * self.mode.available_propulsion_power_main_engine / (self.omega + 0.1),
+                   self.mode.available_propulsion_power_main_engine / 5 * np.pi / 30)
 
     def hsg_torque(self, load_perc):
         ''' Returns the torque of the HSG as a
@@ -683,7 +694,9 @@ class ShipModel:
         #    return load_perc * self.p_rel_rated_hsg / self.omega
         # else:
         #    return 0
-        return min(load_perc * self.p_rel_rated_hsg / (self.omega + 0.1), self.p_rel_rated_hsg / 5 * np.pi / 30)
+        # return min(load_perc * self.p_rel_rated_hsg / (self.omega + 0.1), self.p_rel_rated_hsg / 5 * np.pi / 30)
+        return min(load_perc * self.mode.available_propulsion_power_electrical / (self.omega + 0.1),
+                   self.mode.available_propulsion_power_electrical / 5 * np.pi / 30)
 
     def update_differentials(self, load_perc, rudder_angle):
         ''' This method should be called in the simulation loop. It will
