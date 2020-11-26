@@ -81,11 +81,11 @@ class MachineryMode:
         self.available_propulsion_power_electrical = 0
 
     def update_available_propulsion_power(self, hotel_load):
-        if self.shaft_generator_state == 'motor':
+        if self.shaft_generator_state == 'MOTOR':
             self.available_propulsion_power = self.main_engine_capacity + self.electrical_capacity - hotel_load
             self.available_propulsion_power_main_engine = self.main_engine_capacity
             self.available_propulsion_power_electrical = self.electrical_capacity - hotel_load
-        elif self.shaft_generator_state == 'generator':
+        elif self.shaft_generator_state == 'GEN':
             self.available_propulsion_power = self.main_engine_capacity - hotel_load
             self.available_propulsion_power_main_engine = self.main_engine_capacity - hotel_load
             self.available_propulsion_power_electrical = 0
@@ -97,7 +97,7 @@ class MachineryMode:
 
     def distribute_load(self, load_perc, hotel_load):
         total_load_propulsion = load_perc * self.available_propulsion_power
-        if self.shaft_generator_state == 'motor':
+        if self.shaft_generator_state == 'MOTOR':
             load_main_engine = min(total_load_propulsion, self.main_engine_capacity)
             load_electrical = total_load_propulsion + hotel_load - load_main_engine
             load_percentage_electrical = load_electrical / self.electrical_capacity
@@ -105,7 +105,7 @@ class MachineryMode:
                 load_percentage_main_engine = 0
             else:
                 load_percentage_main_engine = load_main_engine / self.main_engine_capacity
-        elif self.shaft_generator_state == 'generator':
+        elif self.shaft_generator_state == 'GEN':
             # Here the rule is that electrical handles hotel as far as possible
             load_electrical = min(hotel_load, self.electrical_capacity)
             load_main_engine = total_load_propulsion + hotel_load - load_electrical

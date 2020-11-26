@@ -196,3 +196,32 @@ class TestShipModel(TestCase):
         self.assertFalse(len(ship_drawings[0]) == 0)
         self.assertFalse(len(ship_drawings[1]) == 0)
 
+    def test_available_power_for_propulsion_pto(self):
+        ship = self.make_example_ship(route_name='none', initial_yaw_angle=0,
+                                      initial_forward_speed=0,
+                                      initial_propeller_shaft_rpm=0)
+        ship.mode_selector(0)
+        available_propulsion_power_in_pto = ship.mode.main_engine_capacity - ship.hotel_load
+        ship.mode.update_available_propulsion_power(hotel_load=ship.hotel_load)
+        assert(ship.mode.available_propulsion_power == available_propulsion_power_in_pto)
+
+    def test_available_power_for_propulsion_mec(self):
+        ship = self.make_example_ship(route_name='none', initial_yaw_angle=0,
+                                      initial_forward_speed=0,
+                                      initial_propeller_shaft_rpm=0)
+        ship.mode_selector(1)
+        available_propulsion_power_in_mec = ship.mode.main_engine_capacity
+        ship.mode.update_available_propulsion_power(hotel_load=ship.hotel_load)
+        assert(ship.mode.available_propulsion_power == available_propulsion_power_in_mec)
+
+    def test_available_power_for_propulsion_pti(self):
+        ship = self.make_example_ship(route_name='none', initial_yaw_angle=0,
+                                      initial_forward_speed=0,
+                                      initial_propeller_shaft_rpm=0)
+        ship.mode_selector(2)
+        available_propulsion_power_in_pti = ship.mode.electrical_capacity - ship.hotel_load
+        ship.mode.update_available_propulsion_power(hotel_load=ship.hotel_load)
+        assert(ship.mode.available_propulsion_power == available_propulsion_power_in_pti)
+
+
+
