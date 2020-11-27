@@ -49,12 +49,20 @@ ship = ShipModelWithoutPropulsion(ship_config=ship_config,
 continue_simulation = True
 max_wind_speed = 25
 
+time_since_last_ship_drawing = 0
+
+
 while ship.int.time <= ship.int.sim_time and continue_simulation:
 
     ship.wind_speed = random.random() * max_wind_speed
 
     ship.update_differentials()
     ship.integrate_differentials()
+
+    if time_since_last_ship_drawing > 100:
+        ship.ship_snap_shot()
+        time_since_last_ship_drawing = 0
+    time_since_last_ship_drawing += ship.int.dt
 
     ship.store_simulation_data()
 
@@ -63,13 +71,14 @@ while ship.int.time <= ship.int.sim_time and continue_simulation:
         print('Simulation stopped at: ', ship.int.time)
 
 
-
-
     ship.int.next_time()
 
 results = pd.DataFrame().from_dict(ship.simulation_results)
 fig, (ax_1, ax_2) = plt.subplots(1, 2)
 results.plot(x='east position [m]', y='north position [m]', ax=ax_1)
+for x, y in zip(ship.ship_drawings[1], ship.ship_drawings[0]):
+    ax_1.plot(x, y, color='black')
+
 ax_1.set_aspect('equal')
 
 results.plot(x='time [s]', y='wind speed [m/sec]', ax=ax_2)
