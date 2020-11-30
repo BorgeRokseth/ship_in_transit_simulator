@@ -787,7 +787,7 @@ class ShipModel:
         self.fuel.append(cons)
 
 
-class ShipModelSimplefiedPropulsion:
+class ShipModelSimplifiedPropulsion:
     ''' Creates a ship model object that can be used to simulate a ship in transit
 
         The ships model is propelled by a single propeller and steered by a rudder.
@@ -845,8 +845,6 @@ class ShipModelSimplefiedPropulsion:
         mode = simulation_config.machinery_system_operating_mode
         self.mode = self.machinery_modes.list_of_modes[mode]
 
-        #self.p_rated_me = machinery_config.mcr_main_engine  # 2160000  # 2.16 MW
-        #self.p_rated_hsg = machinery_config.mcr_hybrid_shaft_generator  # 590000  # 0.59 MW
         self.w_rated_me = machinery_config.rated_speed_main_engine_rpm * np.pi / 30  # 1000 * np.pi / 30  # rated speed
         self.d_me = machinery_config.linear_friction_main_engine  # 68.0  # linear friction for main engine speed
         self.d_hsg = machinery_config.linear_friction_hybrid_shaft_generator  # 57.0  # linear friction for HSG speed
@@ -857,6 +855,12 @@ class ShipModelSimplefiedPropulsion:
         self.dp = machinery_config.propeller_diameter  # 3.1  # propeller diameter
         self.kt = machinery_config.propeller_speed_to_thrust_force_coefficient  # 1.7  # constant relating omega to thrust force
         self.shaft_speed_max = 1.1 * self.w_rated_me * self.r_me  # Used for saturation of power sources
+
+        self.thrust = 0  # Update to take as parameter
+        self.d_thrust = 0
+        self.k_thrust = 2160 / 800
+        self.thrust_damping = 1
+        self.thrust_time_constant = 1000
 
         self.c_rudder_v = machinery_config.rudder_angle_to_sway_force_coefficient  # 50000.0  # tuning param for simplified rudder response model
         self.c_rudder_r = machinery_config.rudder_angle_to_yaw_force_coefficient  # 500000.0  # tuning param for simplified rudder response model
@@ -885,17 +889,14 @@ class ShipModelSimplefiedPropulsion:
         self.u = simulation_config.initial_forward_speed_m_per_s
         self.v = simulation_config.initial_sideways_speed_m_per_s
         self.r = simulation_config.initial_yaw_rate_rad_per_s
-        self.omega = simulation_config.initial_propeller_shaft_speed_rad_per_s
         self.x = self.update_state_vector()
         self.states = np.empty(7)
 
         # Differentials
         self.d_n = self.d_e = self.d_psi = 0
         self.d_u = self.d_v = self.d_r = 0
-        self.d_omega = 0
 
         # Set up ship control systems
-        self.initialize_shaft_speed_controller(kp=0.05, ki=0.005)
         self.initialize_ship_speed_controller(kp=7, ki=0.13)
         self.initialize_ship_heading_controller(kp=4, kd=90, ki=0.005)
         self.initialize_heading_filter(kp=0.5, kd=10, t=5000)
@@ -1011,7 +1012,6 @@ class ShipModelSimplefiedPropulsion:
         load_data = self.mode.distribute_load(load_perc=load_perc, hotel_load=self.hotel_load)
         return load_data.load_percentage_on_main_engine, load_data.load_percentage_on_electrical
 
-
     def fuel_consumption(self, load_perc):
         '''
             Args:
@@ -1123,12 +1123,6 @@ class ShipModelSimplefiedPropulsion:
         self.r = val
         self.x = self.update_state_vector()
 
-    def set_shaft_speed(self, val):
-        ''' Set the propeller shaft speed and update the state vector
-        '''
-        self.omega = val
-        self.x = self.update_state_vector()
-
     def initialize_shaft_speed_controller(self, kp, ki):
         ''' This method sets up and configures the shaft speed
             controller of the ship
@@ -1233,7 +1227,7 @@ class ShipModelSimplefiedPropulsion:
                          [np.sin(self.psi), np.cos(self.psi), 0],
                          [0, 0, 1]])
 
-    def three_dof_kinetics(self, f_thrust, rudder_angle):
+    def three_dof_kinetics(self, load_perc, rudder_angle):
         ''' Calculates accelerations of the ship, as a funciton
             of thrust-force, rudder angle, wind forces and the
             states in the previous time-step.
@@ -1255,10 +1249,11 @@ class ShipModelSimplefiedPropulsion:
 
         # Forces acting (replace zero vectors with suitable functions)
         f_rudder_v, f_rudder_r = self.rudder(rudder_angle)
+        self.update_thrust(load_perc)
 
         F_wind = self.get_wind_force()
         F_waves = np.array([0, 0, 0])
-        F_ctrl = np.array([f_thrust, f_rudder_v, f_rudder_r])
+        F_ctrl = np.array([self.thrust, f_rudder_v, f_rudder_r])
 
         # assembling state vector
         vel = np.array([self.u, self.v, self.r])
@@ -1296,50 +1291,22 @@ class ShipModelSimplefiedPropulsion:
         r_force = -self.c_rudder_r * delta * (self.u - u_c)
         return v_force, r_force
 
-    def shaft_eq(self, torque_main_engine, torque_hsg):
-        ''' Updates the time differential of the shaft speed
-            equation.
+    def update_thrust(self, load_perc):
+        ''' Updates the thrust force based on engine power
         '''
-        eq_me = (torque_main_engine - self.d_me * self.omega) / self.r_me
-        eq_hsg = (torque_hsg - self.d_hsg * self.omega) / self.r_hsg
-        self.d_omega = (eq_me + eq_hsg - self.kp * self.omega ** 2) / self.jp
+        power = load_perc * (self.mode.available_propulsion_power_main_engine
+                             + self.mode.available_propulsion_power_main_engine)
+        self.d_thrust = (-self.k_thrust * self.thrust - self.thrust_damping * self.d_thrust + power) /\
+                        self.thrust_time_constant
 
-    def thrust(self):
-        ''' Updates the thrust force based on the shaft speed (self.omega)
-        '''
-        return self.dp ** 4 * self.kt * self.omega * abs(self.omega)
-
-    def main_engine_torque(self, load_perc):
-        ''' Returns the torque of the main engine as a
-            function of the load percentage parameter
-        '''
-        # if self.omega >= 1 * np.pi / 30:
-        #    return load_perc * self.p_rel_rated_me / self.omega
-        # else:
-        #    return 0
-        #return min(load_perc * self.p_rel_rated_me / (self.omega + 0.1), self.p_rel_rated_me / 5 * np.pi / 30)
-        return min(load_perc * self.mode.available_propulsion_power_main_engine / (self.omega + 0.1),
-                   self.mode.available_propulsion_power_main_engine / 5 * np.pi / 30)
-
-    def hsg_torque(self, load_perc):
-        ''' Returns the torque of the HSG as a
-            function of the load percentage parameter
-        '''
-        # if self.omega >= 100 * np.pi / 30:
-        #    return load_perc * self.p_rel_rated_hsg / self.omega
-        # else:
-        #    return 0
-        # return min(load_perc * self.p_rel_rated_hsg / (self.omega + 0.1), self.p_rel_rated_hsg / 5 * np.pi / 30)
-        return min(load_perc * self.mode.available_propulsion_power_electrical / (self.omega + 0.1),
-                   self.mode.available_propulsion_power_electrical / 5 * np.pi / 30)
+        self.thrust = self.thrust + self.int.dt * self.d_thrust
 
     def update_differentials(self, load_perc, rudder_angle):
         ''' This method should be called in the simulation loop. It will
             update the full differential equation of the ship.
         '''
         self.three_dof_kinematics()
-        self.shaft_eq(self.main_engine_torque(load_perc), self.hsg_torque(load_perc))
-        self.three_dof_kinetics(self.thrust(), rudder_angle)
+        self.three_dof_kinetics(load_perc=load_perc, rudder_angle=rudder_angle)
 
     def integrate_differentials(self):
         ''' Integrates the differential equation one time step ahead using
@@ -1352,7 +1319,6 @@ class ShipModelSimplefiedPropulsion:
         self.set_surge_speed(self.int.integrate(self.u, self.d_u))
         self.set_sway_speed(self.int.integrate(self.v, self.d_v))
         self.set_yaw_rate(self.int.integrate(self.r, self.d_r))
-        self.set_shaft_speed(self.int.integrate(self.omega, self.d_omega))
 
     def store_states(self):
         ''' Appends the current value of each state to an array. This
@@ -1392,7 +1358,6 @@ class ShipModelSimplefiedPropulsion:
         self.simulation_results['forward speed[m/s]'].append(self.u)
         self.simulation_results['sideways speed [m/s]'].append(self.v)
         self.simulation_results['yaw rate [deg/sec]'].append(self.r * 180 / np.pi)
-        self.simulation_results['propeller shaft speed [rpm]'].append(self.omega * 30 / np.pi)
         self.simulation_results['commanded load fraction [-]'].append(load_perc)
         self.simulation_results['commanded load fraction me [-]'].append(load_perc_me)
         self.simulation_results['commanded load fraction hsg [-]'].append(load_perc_hsg)
@@ -1414,10 +1379,10 @@ class ShipModelSimplefiedPropulsion:
         self.simulation_results['fuel consumption me [kg]'].append(cons_me)
         self.simulation_results['fuel consumption hsg [kg]'].append(cons_hsg)
         self.simulation_results['fuel consumption [kg]'].append(cons)
-        self.simulation_results['motor torque [Nm]'].append(self.main_engine_torque(load_perc))
         self.fuel_me.append(cons_me)
         self.fuel_hsg.append(cons_hsg)
         self.fuel.append(cons)
+        self.simulation_results['thrust force [kN]'].append(self.thrust() / 1000)
 
 
 class ShipModelWithoutPropulsion:
