@@ -116,7 +116,6 @@ class TestShipModel(TestCase):
         desired_heading_angle = 15 * np.pi / 180
         while ship.int.time < ship.int.sim_time:
             engine_load_percentage_setpoint = ship.loadperc_from_speedref(desired_speed)
-            rudder_angle = ship.rudderang_from_headingref(desired_heading_angle)
             ship.update_differentials(engine_load_percentage_setpoint, rudder_angle)
             ship.integrate_differentials()
             ship.store_simulation_data(load_perc=engine_load_percentage_setpoint)

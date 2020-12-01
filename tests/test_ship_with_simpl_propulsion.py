@@ -76,7 +76,6 @@ class TestShipModel(TestCase):
             max_rudder_angle_degrees=30,
             rudder_angle_to_yaw_force_coefficient=500e3,
             rudder_angle_to_sway_force_coefficient=50e3,
-            thrust_force_dynamic_damping=0.5,
             thrust_force_dynamic_time_constant=30
         )
 

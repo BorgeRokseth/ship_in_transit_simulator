@@ -168,7 +168,6 @@ class MachinerySystemConfiguration(NamedTuple):
 class SimplifiedPropulsionMachinerySystemConfiguration(NamedTuple):
     hotel_load: float
     machinery_modes: MachineryModes
-    thrust_force_dynamic_damping: float
     thrust_force_dynamic_time_constant: float
     rudder_angle_to_sway_force_coefficient: float
     rudder_angle_to_yaw_force_coefficient: float
@@ -869,11 +868,10 @@ class ShipModelSimplifiedPropulsion:
 
         self.thrust = simulation_config.initial_thrust_force
         self.d_thrust = 0
-        self.k_thrust = 2160 / 800
-        self.thrust_damping = machinery_config.thrust_force_dynamic_damping
+        self.k_thrust = 2160 / 790
         self.thrust_time_constant = machinery_config.thrust_force_dynamic_time_constant
 
-        self.c_rudder_v = machinery_config.rudder_angle_to_sway_force_coefficient  # 50000.0  # tuning param for simplified rudder response model
+        self.c_rudder_v = machinery_config.rudder_angle_to_sway_force_coefficient
         self.c_rudder_r = machinery_config.rudder_angle_to_yaw_force_coefficient  # 500000.0  # tuning param for simplified rudder response model
         self.rudder_ang_max = machinery_config.max_rudder_angle_degrees * np.pi / 180  # 30 * np.pi / 180  # Maximal rudder angle deflection (both ways)
 
@@ -1307,8 +1305,7 @@ class ShipModelSimplifiedPropulsion:
         '''
         power = load_perc * (self.mode.available_propulsion_power_main_engine
                              + self.mode.available_propulsion_power_electrical)
-        self.d_thrust = (-self.k_thrust * self.thrust - self.thrust_damping * self.d_thrust + power) /\
-                        self.thrust_time_constant
+        self.d_thrust = (-self.k_thrust * self.thrust + power) / self.thrust_time_constant
 
         self.thrust = self.thrust + self.int.dt * self.d_thrust
 
