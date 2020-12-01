@@ -48,6 +48,20 @@ class SimulationConfiguration(NamedTuple):
     simulation_time: float
 
 
+class SimplifiedPropulsionSimulationConfiguration(NamedTuple):
+    route_name: str
+    initial_north_position_m: float
+    initial_east_position_m: float
+    initial_yaw_angle_rad: float
+    initial_forward_speed_m_per_s: float
+    initial_sideways_speed_m_per_s: float
+    initial_yaw_rate_rad_per_s: float
+    initial_thrust_force: float
+    machinery_system_operating_mode: int
+    integration_step: float
+    simulation_time: float
+
+
 class DriftSimulationConfiguration(NamedTuple):
     initial_north_position_m: float
     initial_east_position_m: float
@@ -137,8 +151,6 @@ class MachineryModes:
 class MachinerySystemConfiguration(NamedTuple):
     hotel_load: float
     machinery_modes: MachineryModes
-    #mcr_main_engine: float
-    #mcr_hybrid_shaft_generator: float
     rated_speed_main_engine_rpm: float
     linear_friction_main_engine: float
     linear_friction_hybrid_shaft_generator: float
@@ -148,6 +160,16 @@ class MachinerySystemConfiguration(NamedTuple):
     propeller_speed_to_torque_coefficient: float
     propeller_diameter: float
     propeller_speed_to_thrust_force_coefficient: float
+    rudder_angle_to_sway_force_coefficient: float
+    rudder_angle_to_yaw_force_coefficient: float
+    max_rudder_angle_degrees: float
+
+
+class SimplifiedPropulsionMachinerySystemConfiguration(NamedTuple):
+    hotel_load: float
+    machinery_modes: MachineryModes
+    thrust_force_dynamic_damping: float
+    thrust_force_dynamic_time_constant: float
     rudder_angle_to_sway_force_coefficient: float
     rudder_angle_to_yaw_force_coefficient: float
     max_rudder_angle_degrees: float
@@ -806,9 +828,9 @@ class ShipModelSimplifiedPropulsion:
     '''
 
     def __init__(self, ship_config: ShipConfiguration,
-                 machinery_config: MachinerySystemConfiguration,
+                 machinery_config: SimplifiedPropulsionMachinerySystemConfiguration,
                  environment_config: EnvironmentConfiguration,
-                 simulation_config: SimulationConfiguration):
+                 simulation_config: SimplifiedPropulsionSimulationConfiguration):
         route_name = simulation_config.route_name
         if route_name != 'none':
             # Route following
@@ -845,22 +867,11 @@ class ShipModelSimplifiedPropulsion:
         mode = simulation_config.machinery_system_operating_mode
         self.mode = self.machinery_modes.list_of_modes[mode]
 
-        self.w_rated_me = machinery_config.rated_speed_main_engine_rpm * np.pi / 30  # 1000 * np.pi / 30  # rated speed
-        self.d_me = machinery_config.linear_friction_main_engine  # 68.0  # linear friction for main engine speed
-        self.d_hsg = machinery_config.linear_friction_hybrid_shaft_generator  # 57.0  # linear friction for HSG speed
-        self.r_me = machinery_config.gear_ratio_between_main_engine_and_propeller  # 0.6  # gear ratio between main engine and propeller
-        self.r_hsg = machinery_config.gear_ratio_between_hybrid_shaft_generator_and_propeller  # 0.6  # gear ratio between main engine and propeller
-        self.jp = machinery_config.propeller_inertia  # 6000  # propeller inertia
-        self.kp = machinery_config.propeller_speed_to_torque_coefficient  # 7.5  # constant relating omega to torque
-        self.dp = machinery_config.propeller_diameter  # 3.1  # propeller diameter
-        self.kt = machinery_config.propeller_speed_to_thrust_force_coefficient  # 1.7  # constant relating omega to thrust force
-        self.shaft_speed_max = 1.1 * self.w_rated_me * self.r_me  # Used for saturation of power sources
-
-        self.thrust = 0  # Update to take as parameter
+        self.thrust = simulation_config.initial_thrust_force
         self.d_thrust = 0
         self.k_thrust = 2160 / 800
-        self.thrust_damping = 1
-        self.thrust_time_constant = 1000
+        self.thrust_damping = machinery_config.thrust_force_dynamic_damping
+        self.thrust_time_constant = machinery_config.thrust_force_dynamic_time_constant
 
         self.c_rudder_v = machinery_config.rudder_angle_to_sway_force_coefficient  # 50000.0  # tuning param for simplified rudder response model
         self.c_rudder_r = machinery_config.rudder_angle_to_yaw_force_coefficient  # 500000.0  # tuning param for simplified rudder response model
@@ -1085,7 +1096,7 @@ class ShipModelSimplifiedPropulsion:
     def update_state_vector(self):
         ''' Update the state vector according to the individual state values
         '''
-        return np.array([self.n, self.e, self.psi, self.u, self.v, self.r, self.omega])
+        return np.array([self.n, self.e, self.psi, self.u, self.v, self.r])
 
     def set_north_pos(self, val):
         ''' Set the north position of the ship and update the state vector
@@ -1295,7 +1306,7 @@ class ShipModelSimplifiedPropulsion:
         ''' Updates the thrust force based on engine power
         '''
         power = load_perc * (self.mode.available_propulsion_power_main_engine
-                             + self.mode.available_propulsion_power_main_engine)
+                             + self.mode.available_propulsion_power_electrical)
         self.d_thrust = (-self.k_thrust * self.thrust - self.thrust_damping * self.d_thrust + power) /\
                         self.thrust_time_constant
 
@@ -1382,7 +1393,7 @@ class ShipModelSimplifiedPropulsion:
         self.fuel_me.append(cons_me)
         self.fuel_hsg.append(cons_hsg)
         self.fuel.append(cons)
-        self.simulation_results['thrust force [kN]'].append(self.thrust() / 1000)
+        self.simulation_results['thrust force [kN]'].append(self.thrust / 1000)
 
 
 class ShipModelWithoutPropulsion:
