@@ -2066,4 +2066,3 @@ class Zones:
         # ax = plt.gca()
         return plt.Circle((self.e, self.n), radius=self.r3+self.collimargin, fill=False, color='green')
 
-"add a comment"
