@@ -75,9 +75,6 @@ while iceberg.int.time <= iceberg.int.sim_time and continue_simulation:
     countcol = zones_config.colli_event(iceberg.n,iceberg.e)
 
     iceberg.store_simulation_data()
-    if time_since_last_iceberg_drawing > 100:
-        iceberg.iceberg_snap_shot()
-    # Progress time variable to the next time step
 
     if countcol==1:
         continue_simulation = False

@@ -80,15 +80,12 @@ iceberg = IcebergDriftingModel1(iceberg_config=iceberg_config,
                                   environment_config=env_config,
                                   simulation_config=simulation_config
                                   )
-dsim = DistanceSimulation()
+dsim = DistanceSimulation(iceberg=iceberg, zones_config=zones_config)
 simulation_round = 1
-countcol = 0
 
 while simulation_round <=100:
     iceberg.restore_to_intial(simulation_config=simulation_config)
     x=dsim.simulation(iceberg=iceberg,
                           zones_config=zones_config)
     print(x)
-    #countcol += x
     simulation_round += 1
-print(countcol)
