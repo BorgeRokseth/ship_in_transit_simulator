@@ -1963,5 +1963,3 @@ class StaticObstacle:
         # ax = plt.gca()
         ax.add_patch(plt.Circle((self.e, self.n), radius=self.r, fill=True, color='grey'))
 
-"add a comment"
-"see what I can see next"
