@@ -1962,3 +1962,108 @@ class StaticObstacle:
         '''
         # ax = plt.gca()
         ax.add_patch(plt.Circle((self.e, self.n), radius=self.r, fill=True, color='grey'))
+class Zones:
+    def __init__(self, n_pos, e_pos, object_radius, coll_radius, excl_radius, zone1_radius, zone2_radius, zone3_radius,
+                 iceberg_config:IcebergConfiguration):
+        self.n = n_pos
+        self.e = e_pos
+        self.r = coll_radius
+        self.r0 = excl_radius
+        self.r1 = zone1_radius
+        self.r2 = zone2_radius
+        self.r3 = zone3_radius
+        self.collimargin = 0.5*(iceberg_config.waterlinelength_of_iceberg + object_radius)
+
+    def distance(self, n_iceberg, e_iceberg):
+        ''' Returns the distance from a ship with coordinates (north, east)=
+            (n_ship, e_ship), to the closest point on the perifery of the
+            circular obstacle.
+        '''
+        rad_2 = (n_iceberg - self.n) ** 2 + (e_iceberg - self.e) ** 2
+        rad = np.sqrt(abs(rad_2))
+        return rad
+
+    def d_to_north(self, n_iceberg):
+        rad = abs(n_iceberg - self.n)
+        return rad
+
+    def d_to_east(self, e_iceberg):
+        rad = abs(e_iceberg - self.e)
+        return rad
+
+    def cpa_zone(self, d_to_s):
+        """to calculate which zone the cpa (closest point of approach). d_to_s is the distance between the iceberg center and zone center"""
+        if d_to_s - self.collimargin-self.r <= 0:
+            cpazone = -1 #"Collision Zone"
+        elif d_to_s -self.collimargin -self.r0 <= 0:
+            cpazone = 0# "Exclusion Zone"
+        elif d_to_s - self.collimargin - self.r1 <= 0:
+            cpazone = 1 # "Zone 1"
+        elif d_to_s - self.collimargin - self.r2 <= 0:
+            cpazone = 2  # "Zone 2"
+        elif d_to_s - self.collimargin - self.r3 <= 0:
+            cpazone = 3  # "Zone 3"
+        else:cpazone = 4 #"outside all zones"
+        return cpazone
+
+    def d_to_exclusion(self, n_iceberg, e_iceberg):
+        ''' Returns the distance from a ship with coordinates (north, east)=
+            (n_ship, e_ship), to the closest point on the perifery of the
+            circular obstacle.
+        '''
+        rad_2 = (n_iceberg - self.n) ** 2 + (e_iceberg - self.e) ** 2
+        rad = np.sqrt(abs(rad_2))
+        return rad - self.r0-self.collimargin
+
+    def colli_event(self, n_iceberg, e_iceberg):
+        rad_2 = (n_iceberg - self.n) ** 2 + (e_iceberg - self.e) ** 2
+        rad = np.sqrt(abs(rad_2))
+        if rad - self.collimargin-self.r <= 0:
+            return 1
+        else:
+            return 0
+
+    def breach_exclusion(self, n_iceberg, e_iceberg):
+        rad_2 = (n_iceberg - self.n) ** 2 + (e_iceberg - self.e) ** 2
+        rad = np.sqrt(abs(rad_2))
+        if rad - self.collimargin+self.r0 <= 0:
+            return 1
+        else:
+            return 0
+
+    def plot_coll(self):
+        ''' This method can be used to plot the obstacle in a
+            map-view.
+        '''
+        # ax = plt.gca()
+        return plt.Circle((self.e, self.n), radius=self.r+self.collimargin, fill=False, color='red')
+
+    def plot_excl(self):
+        ''' This method can be used to plot the obstacle in a
+            map-view.
+        '''
+        # ax = plt.gca()
+        return plt.Circle((self.e, self.n), radius=self.r0+self.collimargin, fill=False, color='red')
+
+    def plot_zone1(self):
+        ''' This method can be used to plot the obstacle in a
+            map-view.
+        '''
+        # ax = plt.gca()
+        return plt.Circle((self.e, self.n), radius=self.r1+self.collimargin, fill=False, color='orange')
+
+    def plot_zone2(self):
+        ''' This method can be used to plot the obstacle in a
+            map-view.
+        '''
+        # ax = plt.gca()
+        return plt.Circle((self.e, self.n), radius=self.r2+self.collimargin, fill=False, color='blue')
+
+    def plot_zone3(self):
+        ''' This method can be used to plot the obstacle in a
+            map-view.
+        '''
+        # ax = plt.gca()
+        return plt.Circle((self.e, self.n), radius=self.r3+self.collimargin, fill=False, color='green')
+
+"add a comment"
