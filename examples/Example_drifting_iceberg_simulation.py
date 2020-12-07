@@ -2,7 +2,6 @@ from models import IcebergDriftingModel1, \
     DriftSimulationConfiguration, \
     EnvironmentConfiguration, \
     IcebergConfiguration,\
-    IcebergDraw,\
     Zones
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -63,7 +62,6 @@ iceberg = IcebergDriftingModel1(iceberg_config=iceberg_config,
 
 continue_simulation = True
 max_wind_speed = 25
-time_since_last_iceberg_drawing=100
 countcol = 0
 count_enter_excl = 0
 
@@ -79,8 +77,6 @@ while iceberg.int.time <= iceberg.int.sim_time and continue_simulation:
     iceberg.store_simulation_data()
     if time_since_last_iceberg_drawing > 100:
         iceberg.iceberg_snap_shot()
-        time_since_last_iceberg_drawing = 0
-    time_since_last_iceberg_drawing += iceberg.int.dt
     # Progress time variable to the next time step
 
     if countcol==1:
