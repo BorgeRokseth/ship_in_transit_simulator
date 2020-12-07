@@ -85,7 +85,23 @@ class MachineryModeParams(NamedTuple):
     electrical_capacity: float
     shaft_generator_state: str
 
-
+class IcebergConfiguration(NamedTuple):
+    mass_tonnage: float
+    coefficient_of_deadweight_to_displacement: float
+    waterlinelength_of_iceberg: float
+    width_of_iceberg: float
+    height_of_iceberg: float
+    shape_of_iceberg: str
+    size_of_iceberg: str
+    added_mass_coefficient_in_surge: float
+    added_mass_coefficient_in_sway: float
+    added_mass_coefficient_in_yaw: float
+    mass_over_linear_friction_coefficient_in_surge: float
+    mass_over_linear_friction_coefficient_in_sway: float
+    mass_over_linear_friction_coefficient_in_yaw: float
+    nonlinear_friction_coefficient__in_surge: float
+    nonlinear_friction_coefficient__in_sway: float
+    nonlinear_friction_coefficient__in_yaw: float
 class MachineryMode:
     def __init__(self, params: MachineryModeParams):
         self.main_engine_capacity = params.main_engine_capacity
@@ -2066,3 +2082,442 @@ class Zones:
         # ax = plt.gca()
         return plt.Circle((self.e, self.n), radius=self.r3+self.collimargin, fill=False, color='green')
 
+class IcebergDriftingModel1:
+    ''' Creates a iceberg model object that can be used to simulate a iceberg drifting freely
+
+        The model contains the following states:
+        - North position of iceberg
+        - East position of iceberg
+        - Yaw angle (relative to north axis)
+        - Surge velocity (forward)
+        - Sway velocity (sideways)
+        - Yaw rate
+
+        Simulation results are stored in the instance variable simulation_results
+    '''
+
+    def __init__(self, iceberg_config: IcebergConfiguration,
+                 environment_config: EnvironmentConfiguration,
+                 simulation_config: DriftSimulationConfiguration):
+        payload = 0.9 * (iceberg_config.mass_tonnage)
+        lsw = iceberg_config.mass_tonnage / iceberg_config.coefficient_of_deadweight_to_displacement \
+              - iceberg_config.mass_tonnage
+        self.mass = lsw + payload
+
+        self.l_iceberg = iceberg_config.waterlinelength_of_iceberg  # 80
+        self.w_iceberg = iceberg_config.width_of_iceberg  # 16.0
+        self.x_g = 0
+        self.i_z = self.mass * (self.l_iceberg ** 2 + self.w_iceberg ** 2) / 12
+
+        # zero-frequency added mass
+        self.x_du, self.y_dv, self.n_dr = self.set_added_mass(iceberg_config.added_mass_coefficient_in_surge,
+                                                              iceberg_config.added_mass_coefficient_in_sway,
+                                                              iceberg_config.added_mass_coefficient_in_yaw)
+
+        self.t_surge = iceberg_config.mass_over_linear_friction_coefficient_in_surge
+        self.t_sway = iceberg_config.mass_over_linear_friction_coefficient_in_sway
+        self.t_yaw = iceberg_config.mass_over_linear_friction_coefficient_in_yaw
+        self.ku = iceberg_config.nonlinear_friction_coefficient__in_surge  # 2400.0  # non-linear friction coeff in surge
+        self.kv = iceberg_config.nonlinear_friction_coefficient__in_sway  # 4000.0  # non-linear friction coeff in sway
+        self.kr = iceberg_config.nonlinear_friction_coefficient__in_yaw  # 400.0  # non-linear friction coeff in yaw
+
+        # Environmental conditions
+        self.vel_c = np.array([environment_config.current_velocity_component_from_north,
+                               environment_config.current_velocity_component_from_east,
+                               0.0])
+        self.wind_dir = environment_config.wind_direction
+        self.wind_speed = environment_config.wind_speed
+
+        # Initial states (can be altered using self.set_state_vector(x))
+        self.n = simulation_config.initial_north_position_m
+        self.e = simulation_config.initial_east_position_m
+        self.psi = simulation_config.initial_yaw_angle_rad
+        self.u = simulation_config.initial_forward_speed_m_per_s
+        self.v = simulation_config.initial_sideways_speed_m_per_s
+        self.r = simulation_config.initial_yaw_rate_rad_per_s
+        self.x = self.update_state_vector()
+        self.states = np.empty(6)
+
+        # Differentials
+        self.d_n = self.d_e = self.d_psi = 0
+        self.d_u = self.d_v = self.d_r = 0
+
+        # Set up integration
+        self.int = EulerInt()  # Instantiate the Euler integrator
+        self.int.set_dt(simulation_config.integration_step)
+        self.int.set_sim_time(simulation_config.simulation_time)
+
+        # Instantiate ship draw plotting
+        self.drw = IcebergDraw(iceberg_config)  # Instantiate the ship drawing class
+        self.iceberg_drawings = [[], []]  # Arrays for storing ship drawing data
+
+        # Wind effect on ship
+        self.rho_a = 1.2
+        self.h_f = 8.0  # mean height above water seen from the front
+        self.h_s = 8.0  # mean height above water seen from the side
+        self.proj_area_f = self.w_iceberg * self.h_f  # Projected are from the front
+        self.proj_area_l = self.l_iceberg * self.h_s  # Projected area from the side
+        self.cx = 0.5
+        self.cy = 0.7
+        self.cn = 0.08
+
+        self.simulation_results = defaultdict(list)
+
+    def set_added_mass(self, surge_coeff, sway_coeff, yaw_coeff):
+        ''' Sets the added mass in surge due to surge motion, sway due
+            to sway motion and yaw due to yaw motion according to given coeffs.
+
+            args:
+                surge_coeff (float): Added mass coefficient in surge direction due to surge motion
+                sway_coeff (float): Added mass coefficient in sway direction due to sway motion
+                yaw_coeff (float): Added mass coefficient in yaw direction due to yaw motion
+            returns:
+                x_du (float): Added mass in surge
+                y_dv (float): Added mass in sway
+                n_dr (float): Added mass in yaw
+        '''
+        x_du = self.mass * surge_coeff
+        y_dv = self.mass * sway_coeff
+        n_dr = self.i_z * yaw_coeff
+        return x_du, y_dv, n_dr
+
+    def get_wind_force(self):
+        ''' This method calculates the forces due to the relative
+            wind speed, acting on teh ship in surge, sway and yaw
+            direction.
+
+            :return: Wind force acting in surge, sway and yaw
+        '''
+        uw = self.wind_speed * np.cos(self.wind_dir - self.psi)
+        vw = self.wind_speed * np.sin(self.wind_dir - self.psi)
+        u_rw = uw - self.u
+        v_rw = vw - self.v
+        gamma_rw = -np.arctan2(v_rw, u_rw)
+        wind_rw2 = u_rw ** 2 + v_rw ** 2
+        c_x = -self.cx * np.cos(gamma_rw)
+        c_y = self.cy * np.sin(gamma_rw)
+        c_n = self.cn * np.sin(2 * gamma_rw)
+        tau_coeff = 0.5 * self.rho_a * wind_rw2
+        tau_u = tau_coeff * c_x * self.proj_area_f
+        tau_v = tau_coeff * c_y * self.proj_area_l
+        tau_n = tau_coeff * c_n * self.proj_area_l * self.l_iceberg
+        return np.array([tau_u, tau_v, tau_n])
+
+    def update_state_vector(self):
+        ''' Update the state vector according to the individual state values
+        '''
+        return np.array([self.n, self.e, self.psi, self.u, self.v, self.r])
+
+    def set_north_pos(self, val):
+        ''' Set the north position of the iceberg and update the state vector
+        '''
+        self.n = val
+        self.x = self.update_state_vector()
+
+    def set_east_pos(self, val):
+        ''' Set the east position of the iceberg and update the state vector
+        '''
+        self.e = val
+        self.x = self.update_state_vector()
+
+    def set_yaw_angle(self, val):
+        ''' Set the yaw angle of the iceberg and update the state vector
+        '''
+        self.psi = val
+        self.x = self.update_state_vector()
+
+    def set_surge_speed(self, val):
+        ''' Set the surge speed of the iceberg and update the state vector
+        '''
+        self.u = val
+        self.x = self.update_state_vector()
+
+    def set_sway_speed(self, val):
+        ''' Set the sway speed of the iceberg and update the state vector
+        '''
+        self.v = val
+        self.x = self.update_state_vector()
+
+    def set_yaw_rate(self, val):
+        ''' Set the yaw rate of the iceberg and update the state vector
+        '''
+        self.r = val
+        self.x = self.update_state_vector()
+
+    def three_dof_kinematics(self):
+        ''' Updates the time differientials of the north position, east
+            position and yaw angle. Should be called in the simulation
+            loop before the integration step.
+        '''
+        vel = np.array([self.u, self.v, self.r])
+        dx = np.dot(self.rotation(), vel)
+        self.d_n = dx[0]
+        self.d_e = dx[1]
+        self.d_psi = dx[2]
+
+    def rotation(self):
+        ''' Specifies the rotation matrix for rotations about the z-axis, such that
+            "body-fixed coordinates" = rotation x "North-east-down-fixed coordinates" .
+        '''
+        return np.array([[np.cos(self.psi), -np.sin(self.psi), 0],
+                         [np.sin(self.psi), np.cos(self.psi), 0],
+                         [0, 0, 1]])
+
+    def three_dof_kinetics(self):
+        ''' Calculates accelerations of the iceberg, as a funciton
+            of wind forces and the states in the previous time-step.
+        '''
+        # System matrices (did not include added mass yet)
+        M_rb = np.array([[self.mass + self.x_du, 0, 0],
+                         [0, self.mass + self.y_dv, self.mass * self.x_g],
+                         [0, self.mass * self.x_g, self.i_z + self.n_dr]])
+        C_rb = np.array([[0, 0, -self.mass * (self.x_g * self.r + self.v)],
+                         [0, 0, self.mass * self.u],
+                         [self.mass * (self.x_g * self.r + self.v), -self.mass * self.u, 0]])
+
+        D = np.array([[self.mass / self.t_surge, 0, 0],
+                      [0, self.mass / self.t_sway, 0],
+                      [0, 0, self.i_z / self.t_yaw]])
+        D2 = np.array([[self.ku * self.u, 0, 0],
+                       [0, self.kv * self.v, 0],
+                       [0, 0, self.kr * self.r]])
+
+        F_wind = self.get_wind_force()
+        F_waves = np.array([0, 0, 0])
+
+        # assembling state vector
+        vel = np.array([self.u, self.v, self.r])
+
+        # Transforming current velocity to ship frame
+        v_c = np.dot(np.linalg.inv(self.rotation()), self.vel_c)
+        u_r = self.u - v_c[0]
+        v_r = self.v - v_c[1]
+
+        C_a = np.array([[0, 0, self.y_dv * v_r],
+                        [0, 0, -self.x_du * u_r],
+                        [-self.y_dv * v_r, self.x_du * u_r, 0]])
+
+        # Kinetic equation
+        M_inv = np.linalg.inv(M_rb)
+        dx = np.dot(M_inv, -np.dot(C_rb, vel) - -np.dot(C_a, vel - v_c) - np.dot(D + D2, vel - v_c)
+                    + F_wind)
+        self.d_u = dx[0]
+        self.d_v = dx[1]
+        self.d_r = dx[2]
+
+    def update_differentials(self):
+        ''' This method should be called in the simulation loop. It will
+            update the full differential equation of the ship.
+        '''
+        self.three_dof_kinematics()
+        self.three_dof_kinetics()
+
+    def integrate_differentials(self):
+        ''' Integrates the differential equation one time step ahead using
+            the euler intgration method with parameters set in the
+            int-instantiation of the "EulerInt"-class.
+        '''
+        self.set_north_pos(self.int.integrate(self.n, self.d_n))
+        self.set_east_pos(self.int.integrate(self.e, self.d_e))
+        self.set_yaw_angle(self.int.integrate(self.psi, self.d_psi))
+        self.set_surge_speed(self.int.integrate(self.u, self.d_u))
+        self.set_sway_speed(self.int.integrate(self.v, self.d_v))
+        self.set_yaw_rate(self.int.integrate(self.r, self.d_r))
+
+    def store_states(self):
+        ''' Appends the current value of each state to an array. This
+            is convenient when plotting. The method should be called within
+            the simulation loop each time step. Then afterwars, an array
+            containing for ecample the north-position for each time step
+            is obtained as ...states[0]
+        '''
+        self.states[0].append(self.n)
+        self.states[1].append(self.e)
+        self.states[2].append(self.psi)
+        self.states[3].append(self.u)
+        self.states[4].append(self.v)
+        self.states[5].append(self.r)
+
+    def iceberg_snap_shot(self):
+        ''' This method is used to store a map-view snap shot of
+            the ship at the given north-east position and heading.
+            It uses the ShipDraw-class. To plot a map view of the
+            n-th ship snap-shot, use:
+
+            plot(ship_drawings[1][n], ship_drawings[0][n])
+        '''
+        x, y = self.drw.local_coords()
+        x_ned, y_ned = self.drw.rotate_coords(x, y, self.psi)
+        x_ned_trans, y_ned_trans = self.drw.translate_coords(x_ned, y_ned, self.n, self.e)
+        self.iceberg_drawings[0].append(x_ned_trans)
+        self.iceberg_drawings[1].append(y_ned_trans)
+
+    def store_simulation_data(self):
+        self.simulation_results['time [s]'].append(self.int.time)
+        self.simulation_results['north position [m]'].append(self.n)
+        self.simulation_results['east position [m]'].append(self.e)
+        self.simulation_results['yaw angle [deg]'].append(self.t_yaw * 180 / np.pi)
+        self.simulation_results['forward speed[m/s]'].append(self.u)
+        self.simulation_results['sideways speed [m/s]'].append(self.v)
+        self.simulation_results['yaw rate [deg/sec]'].append(self.r * 180 / np.pi)
+        self.simulation_results['wind speed [m/sec]'].append(self.wind_speed)
+        self.simulation_results['wind direction [radius]'].append(self.wind_dir)
+
+    def restore_to_intial(self,simulation_config:DriftSimulationConfiguration):
+        self.n = simulation_config.initial_north_position_m
+        self.e = simulation_config.initial_east_position_m
+        self.psi = simulation_config.initial_yaw_angle_rad
+        self.u = simulation_config.initial_forward_speed_m_per_s
+        self.v = simulation_config.initial_sideways_speed_m_per_s
+        self.r = simulation_config.initial_yaw_rate_rad_per_s
+
+
+class DistanceSimulation:
+    """his class is for simulate drift multiple times to get a distribution of
+    collision event and
+    time to collision,
+    closest point of approach,
+    impact point in case of collision,
+    when and where iceberg breach the exclusion zone,
+    when and where the iceberg breach zone 1
+    when and where the iceberg breach zone 2
+    when and where the iceberg beach zone 3"""
+    def __init__(self, iceberg:IcebergDriftingModel1, zones_config:Zones):
+        self.distance_results = defaultdict(list)
+        self.iceberg=iceberg
+        self.zones_config=zones_config
+
+    def simulation(self,iceberg:IcebergDriftingModel1, zones_config:Zones):
+        max_wind_speed = 25
+
+        self.iceberg.int.time = 0
+        continue_simulation = True
+        while iceberg.int.time <= iceberg.int.sim_time and continue_simulation:
+            #iceberg.wind_speed = random.random() * max_wind_speed
+            self.iceberg.update_differentials()
+            iceberg.integrate_differentials()
+            col = zones_config.colli_event(iceberg.n, iceberg.e)
+
+            d = zones_config.distance(iceberg.n, iceberg.e)
+            d_to_exc = d-zones_config.r0-zones_config.collimargin
+            d_to_zone1 = d - zones_config.r1 - zones_config.collimargin
+            d_to_zone2 = d - zones_config.r2 - zones_config.collimargin
+            d_to_zone3 = d - zones_config.r3 - zones_config.collimargin
+
+            dn = zones_config.d_to_north(iceberg.n)
+            de = zones_config.d_to_east(iceberg.e)
+
+            t = iceberg.int.time
+
+            self.distance_results['Time [s]'].append(t)
+            self.distance_results['Distance between iceberg and structure [m]'].append(d)
+            self.distance_results['Distance between iceberg and structure in north direction [m]'].append(dn)
+            self.distance_results['Distance between iceberg and structure in north direction [m]'].append(de)
+            self.distance_results['Distance to exclusion zone'].append(d_to_exc)
+            self.distance_results['Distance to zone 1'].append(d_to_zone1)
+            self.distance_results['Distance to zone 2'].append(d_to_zone2)
+            self.distance_results['Distance to zone 3'].append(d_to_zone3)
+            self.distance_results['Collision event'].append(col)
+
+            if col == 1:
+
+                continue_simulation = False
+                col_time=iceberg.int.time
+                print('Collision occur at: ', iceberg.int.time, 's')
+                print("Closest point to Structure:", zones_config.distance(iceberg.n, iceberg.e), 'm', "CPA:", iceberg.n, iceberg.e)
+            elif iceberg.n > zones_config.r3 + zones_config.n:
+                continue_simulation = False
+            iceberg.int.next_time()
+    def cpa(self):
+
+        cpaf = pd.DataFrame().from_dict(self.distance_results['Distance between iceberg and structure [m]']).min()
+        cpa_d = pd.DataFrame(cpaf).to_numpy()[0, 0]
+        cpaf_idx = pd.DataFrame().from_dict(self.distance_results['Distance between iceberg and structure [m]']).idxmin()
+        cpa_idx = pd.DataFrame(cpaf_idx).to_numpy()[0, 0]
+        cpa_time = pd.DataFrame().from_dict(self.distance_results['Time [s]']).loc(cpa_idx)
+
+        cpazone = zones_config.cpa_zone(cpa_d)
+
+        cpa = [cpa_d, cpa_loc, cpa_time, cpa_zone]
+        if cpazone == -1:
+            col = 1
+            exc_breach = 1
+            zone1_breach = 1
+            zone2_breach = 1
+            zone3_breach = 1
+            time_array = pd.DataFrame().from_dict(self.distance_results['Exclusion zone breaching event'])
+            time_idx = time_array.index(1)
+            exc_time = pd.DataFrame().from_dict(self.distance_results['Time [s]']).loc(time_idx)
+        elif cpazone == 0:
+            col = 0
+            exc_breach = 1
+            zone1_breach = 1
+            zone2_breach = 1
+            zone3_breach = 1
+        elif cpazone == 1:
+            col = 0
+            exc_breach = 1
+            zone1_breach = 1
+            zone2_breach = 1
+            zone3_breach = 1
+        elif cpazone == 1:
+            col = 0
+            exc_breach = 0
+            zone1_breach = 1
+            zone2_breach = 1
+            zone3_breach = 1
+        elif cpazone == 2:
+            col = 0
+            exc_breach = 0
+            zone1_breach = 0
+            zone2_breach = 1
+            zone3_breach = 1
+        elif cpazone == 3:
+            col = 0
+            exc_breach = 0
+            zone1_breach = 0
+            zone2_breach = 0
+            zone3_breach = 1
+        else:
+            col = 0
+            exc_breach = 0
+            zone1_breach = 0
+            zone2_breach = 0
+            zone3_breach = 0
+        breach_event=[col, exc_breach, zone1_breach, zone2_breach, zone3_breach]
+        col_point = [col_loc, col_time]
+        exc_point = [exc_loc, exc_time]
+        zone1_point = [zone1_loc, zone1_time]
+        zone2_point = [zone2_loc, zone2_time]
+        zone3_point = [zone3_loc, zone3_time]
+        return cpa, breach_event, col_point, exc_point, zone1_point, zone2_point, zone3_point
+
+
+
+class MultiSimulation:
+    """this class is for
+    1) store data for each simulation,
+    2) calculate the distribution of cpa, tcpa etc. for all simulations"""
+    def __init__(self, sim_round, dissim_config:DistanceSimulation):
+        self.n=sim_round
+        self.round_results=defaultdict(list)
+        self.cpa= dissim_config.cpa[0]#cpa = [cpa_d, cpa_loc, cpa_time, cpa_zone]
+        self.breach_event = dissim_config.cpa[1]#breach_event=[col, exc_breach, zone1_breach, zone2_breach, zone3_breach]
+        self.col_point = dissim_config.cpa[2]  # col_point = [exc_loc, exc_time]
+        self.exc_point = dissim_config.cpa[3]#exc_point = [exc_loc, exc_time]
+        self.zone1_point = dissim_config.cpa[4]#zone1_point = [zone1_loc, zone1_time]
+        self.zone2_point = dissim_config.cpa[5]  # zone2_point = [zone2_loc, zone2_time]
+        self.zone3_point = dissim_config.cpa[6]# zone3_point = [zone3_loc, zone3_time]
+
+    def store_points(self):
+        n=1
+        while n <= self.n:
+            self.round_results['simulation round'].append(self.n)
+            self.round_results['closest point of approach (cpa)'].append(self.cpa)
+            self.round_results['breach event'].append(self.breach_event)
+            self.round_results['where and when the iceberg breach the collision zone'].append(self.col_point)
+            self.round_results['where and when the iceberg breach the exclusion zone'].append(self.exc_point)
+            self.round_results['where and when the iceberg breach the zone 1'].append(self.zone1_point)
+            self.round_results['where and when the iceberg breach the zone 2'].append(self.zone2_point)
+            self.round_results['where and when the iceberg breach the zone 3'].append(self.zone3_point)
+    #def distribution(self):
