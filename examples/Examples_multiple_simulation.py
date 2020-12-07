@@ -4,8 +4,7 @@ from models import IcebergDriftingModel1, \
     IcebergConfiguration,\
     Zones,\
     ShipConfiguration,\
-    DistanceSimulation,\
-    StoreDistance
+    DistanceSimulation
 import pandas as pd
 import matplotlib.pyplot as plt
 import random
@@ -34,9 +33,6 @@ env_config = EnvironmentConfiguration(
     current_velocity_component_from_east=2,
     wind_direction=39,
     wind_speed=15,
-    swh=10,
-    swh_direction=15,
-    wave_velocity=0
 )
 
 
@@ -85,7 +81,6 @@ iceberg = IcebergDriftingModel1(iceberg_config=iceberg_config,
                                   simulation_config=simulation_config
                                   )
 dsim = DistanceSimulation()
-d_data=StoreDistance()
 simulation_round = 1
 countcol = 0
 
