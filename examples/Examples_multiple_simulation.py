@@ -116,23 +116,23 @@ while simulation_round <= round:
         col_point = [cpa_time, dsim.iceberg.simulation_results['north position [m]'][cpa_idx], dsim.iceberg.simulation_results['east position [m]'][cpa_idx]]
         d_to_exc = dsim.distance_results['Distance to exclusion zone']
         exc_idx = list(map(lambda i: i <= 0, d_to_exc)).index(True)
-        exc_point = [dsim.iceberg.simulation_results['time [s]'][exc_idx],\
-                     dsim.iceberg.simulation_results['north position [m]'][exc_idx],\
+        exc_point = [dsim.iceberg.simulation_results['time [s]'][exc_idx],
+                     dsim.iceberg.simulation_results['north position [m]'][exc_idx],
                      dsim.iceberg.simulation_results['east position [m]'][exc_idx]]
         d_to_zone1 = dsim.distance_results['Distance to zone 1']
         zone1_idx = list(map(lambda i: i <= 0, d_to_zone1)).index(True)
-        zone1_point = [dsim.iceberg.simulation_results['time [s]'][zone1_idx],\
-                       dsim.iceberg.simulation_results['north position [m]'][zone1_idx],\
+        zone1_point = [dsim.iceberg.simulation_results['time [s]'][zone1_idx],
+                       dsim.iceberg.simulation_results['north position [m]'][zone1_idx],
                        dsim.iceberg.simulation_results['east position [m]'][zone1_idx]]
         d_to_zone2 = dsim.distance_results['Distance to zone 2']
         zone2_idx = list(map(lambda i: i <= 0, d_to_zone2)).index(True)
-        zone2_point = [dsim.iceberg.simulation_results['time [s]'][zone2_idx],\
-                       dsim.iceberg.simulation_results['north position [m]'][zone2_idx],\
+        zone2_point = [dsim.iceberg.simulation_results['time [s]'][zone2_idx],
+                       dsim.iceberg.simulation_results['north position [m]'][zone2_idx],
                        dsim.iceberg.simulation_results['east position [m]'][zone2_idx]]
         d_to_zone3 = dsim.distance_results['Distance to zone 3']
         zone3_idx = list(map(lambda i: i <= 0, d_to_zone3)).index(True)
-        zone3_point = [dsim.iceberg.simulation_results['time [s]'][zone3_idx],\
-                       dsim.iceberg.simulation_results['north position [m]'][zone3_idx],\
+        zone3_point = [dsim.iceberg.simulation_results['time [s]'][zone3_idx],
+                       dsim.iceberg.simulation_results['north position [m]'][zone3_idx],
                        dsim.iceberg.simulation_results['east position [m]'][zone3_idx]]
     elif cpazone == 0:
         col = 0
@@ -143,23 +143,23 @@ while simulation_round <= round:
         col_point = np.empty(3)
         d_to_exc = dsim.distance_results['Distance to exclusion zone']
         exc_idx = list(map(lambda i: i <= 0, d_to_exc)).index(True)
-        exc_point = [dsim.iceberg.simulation_results['time [s]'][exc_idx],\
-                     dsim.iceberg.simulation_results['north position [m]'][exc_idx],\
+        exc_point = [dsim.iceberg.simulation_results['time [s]'][exc_idx],
+                     dsim.iceberg.simulation_results['north position [m]'][exc_idx],
                      dsim.iceberg.simulation_results['east position [m]'][exc_idx]]
         d_to_zone1 = dsim.distance_results['Distance to zone 1']
         zone1_idx = list(map(lambda i: i <= 0, d_to_zone1)).index(True)
-        zone1_point = [dsim.iceberg.simulation_results['time [s]'][zone1_idx],\
-                       dsim.iceberg.simulation_results['north position [m]'][zone1_idx],\
+        zone1_point = [dsim.iceberg.simulation_results['time [s]'][zone1_idx],
+                       dsim.iceberg.simulation_results['north position [m]'][zone1_idx],
                        dsim.iceberg.simulation_results['east position [m]'][zone1_idx]]
         d_to_zone2 = dsim.distance_results['Distance to zone 2']
         zone2_idx = list(map(lambda i: i <= 0, d_to_zone2)).index(True)
-        zone2_point = [dsim.iceberg.simulation_results['time [s]'][zone2_idx],\
-                       dsim.iceberg.simulation_results['north position [m]'][zone2_idx],\
+        zone2_point = [dsim.iceberg.simulation_results['time [s]'][zone2_idx],
+                       dsim.iceberg.simulation_results['north position [m]'][zone2_idx],
                        dsim.iceberg.simulation_results['east position [m]'][zone2_idx]]
         d_to_zone3 = dsim.distance_results['Distance to zone 3']
         zone3_idx = list(map(lambda i: i <= 0, d_to_zone3)).index(True)
-        zone3_point = [dsim.iceberg.simulation_results['time [s]'][zone3_idx],\
-                       dsim.iceberg.simulation_results['north position [m]'][zone3_idx],\
+        zone3_point = [dsim.iceberg.simulation_results['time [s]'][zone3_idx],
+                       dsim.iceberg.simulation_results['north position [m]'][zone3_idx],
                        dsim.iceberg.simulation_results['east position [m]'][zone3_idx]]
     elif cpazone == 1:
         col = 0
@@ -171,18 +171,18 @@ while simulation_round <= round:
         exc_point = np.empty(3)
         d_to_zone1 = dsim.distance_results['Distance to zone 1']
         zone1_idx = list(map(lambda i: i <= 0, d_to_zone1)).index(True)
-        zone1_point = [dsim.iceberg.simulation_results['time [s]'][zone1_idx],\
-                       dsim.iceberg.simulation_results['north position [m]'][zone1_idx],\
+        zone1_point = [dsim.iceberg.simulation_results['time [s]'][zone1_idx],
+                       dsim.iceberg.simulation_results['north position [m]'][zone1_idx],
                        dsim.iceberg.simulation_results['east position [m]'][zone1_idx]]
         d_to_zone2 = dsim.distance_results['Distance to zone 2']
         zone2_idx = list(map(lambda i: i <= 0, d_to_zone2)).index(True)
-        zone2_point = [dsim.iceberg.simulation_results['time [s]'][zone2_idx],\
-                       dsim.iceberg.simulation_results['north position [m]'][zone2_idx],\
+        zone2_point = [dsim.iceberg.simulation_results['time [s]'][zone2_idx],
+                       dsim.iceberg.simulation_results['north position [m]'][zone2_idx],
                        dsim.iceberg.simulation_results['east position [m]'][zone2_idx]]
         d_to_zone3 = dsim.distance_results['Distance to zone 3']
         zone3_idx = list(map(lambda i: i <= 0, d_to_zone3)).index(True)
-        zone3_point = [dsim.iceberg.simulation_results['time [s]'][zone3_idx],\
-                       dsim.iceberg.simulation_results['north position [m]'][zone3_idx],\
+        zone3_point = [dsim.iceberg.simulation_results['time [s]'][zone3_idx],
+                       dsim.iceberg.simulation_results['north position [m]'][zone3_idx],
                        dsim.iceberg.simulation_results['east position [m]'][zone3_idx]]
     elif cpazone == 2:
         col = 0
@@ -195,13 +195,13 @@ while simulation_round <= round:
         zone1_point = np.empty(3)
         d_to_zone2 = dsim.distance_results['Distance to zone 2']
         zone2_idx = list(map(lambda i: i <= 0, d_to_zone2)).index(True)
-        zone2_point = [dsim.iceberg.simulation_results['time [s]'][zone2_idx],\
-                       dsim.iceberg.simulation_results['north position [m]'][zone2_idx],\
+        zone2_point = [dsim.iceberg.simulation_results['time [s]'][zone2_idx],
+                       dsim.iceberg.simulation_results['north position [m]'][zone2_idx],
                        dsim.iceberg.simulation_results['east position [m]'][zone2_idx]]
         d_to_zone3 = dsim.distance_results['Distance to zone 3']
         zone3_idx = list(map(lambda i: i <= 0, d_to_zone3)).index(True)
-        zone3_point = [dsim.iceberg.simulation_results['time [s]'][zone3_idx],\
-                       dsim.iceberg.simulation_results['north position [m]'][zone3_idx],\
+        zone3_point = [dsim.iceberg.simulation_results['time [s]'][zone3_idx],
+                       dsim.iceberg.simulation_results['north position [m]'][zone3_idx],
                        dsim.iceberg.simulation_results['east position [m]'][zone3_idx]]
     elif cpazone == 3:
         col = 0
@@ -215,8 +215,8 @@ while simulation_round <= round:
         zone2_point = np.empty(3)
         d_to_zone3 = dsim.distance_results['Distance to zone 3']
         zone3_idx = list(map(lambda i: i <= 0, d_to_zone3)).index(True)
-        zone3_point = [dsim.iceberg.simulation_results['time [s]'][zone3_idx],\
-                       dsim.iceberg.simulation_results['north position [m]'][zone3_idx],\
+        zone3_point = [dsim.iceberg.simulation_results['time [s]'][zone3_idx],
+                       dsim.iceberg.simulation_results['north position [m]'][zone3_idx],
                        dsim.iceberg.simulation_results['east position [m]'][zone3_idx]]
     else:
         col = 0
