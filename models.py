@@ -104,6 +104,17 @@ class IcebergConfiguration(NamedTuple):
     nonlinear_friction_coefficient__in_surge: float
     nonlinear_friction_coefficient__in_sway: float
     nonlinear_friction_coefficient__in_yaw: float
+class ZonesConfiguration(NamedTuple):
+    n_pos: float
+    e_pos: float
+    object_radius:float
+    coll_radius: float
+    excl_radius: float
+    zone1_radius: float
+    zone2_radius: float
+    zone3_radius: float
+
+
 class MachineryMode:
     def __init__(self, params: MachineryModeParams):
         self.main_engine_capacity = params.main_engine_capacity
@@ -1981,16 +1992,15 @@ class StaticObstacle:
         # ax = plt.gca()
         ax.add_patch(plt.Circle((self.e, self.n), radius=self.r, fill=True, color='grey'))
 class Zones:
-    def __init__(self, n_pos, e_pos, object_radius, coll_radius, excl_radius, zone1_radius, zone2_radius, zone3_radius,
-                 iceberg_config:IcebergConfiguration):
-        self.n = n_pos
-        self.e = e_pos
-        self.r = coll_radius
-        self.r0 = excl_radius
-        self.r1 = zone1_radius
-        self.r2 = zone2_radius
-        self.r3 = zone3_radius
-        self.collimargin = 0.5*(iceberg_config.waterlinelength_of_iceberg + object_radius)
+    def __init__(self, z_config: ZonesConfiguration, iceberg_config: IcebergConfiguration):
+        self.n = z_config.n_pos
+        self.e = z_config.e_pos
+        self.r = z_config.coll_radius
+        self.r0 = z_config.excl_radius
+        self.r1 = z_config.zone1_radius
+        self.r2 = z_config.zone2_radius
+        self.r3 = z_config.zone3_radius
+        self.collimargin = 0.5*(iceberg_config.waterlinelength_of_iceberg + z_config.object_radius)
 
     def distance(self, n_iceberg, e_iceberg):
         ''' Returns the distance from a ship with coordinates (north, east)=
@@ -2184,6 +2194,14 @@ class IcebergDriftingModel1:
         self.r = simulation_config.initial_yaw_rate_rad_per_s
         self.x = self.update_state_vector()
         self.states = np.empty(6)
+
+        # Initial states (save as local values)
+        self.n_initial = simulation_config.initial_north_position_m
+        self.e_initial = simulation_config.initial_east_position_m
+        self.psi_initial = simulation_config.initial_yaw_angle_rad
+        self.u_initial = simulation_config.initial_forward_speed_m_per_s
+        self.v_initial = simulation_config.initial_sideways_speed_m_per_s
+        self.r_initial = simulation_config.initial_yaw_rate_rad_per_s
 
         # Differentials
         self.d_n = self.d_e = self.d_psi = 0
@@ -2410,13 +2428,13 @@ class IcebergDriftingModel1:
         self.simulation_results['wind speed [m/sec]'].append(self.wind_speed)
         self.simulation_results['wind direction [radius]'].append(self.wind_dir)
 
-    def restore_to_intial(self,simulation_config:DriftSimulationConfiguration):
-        self.n = simulation_config.initial_north_position_m
-        self.e = simulation_config.initial_east_position_m
-        self.psi = simulation_config.initial_yaw_angle_rad
-        self.u = simulation_config.initial_forward_speed_m_per_s
-        self.v = simulation_config.initial_sideways_speed_m_per_s
-        self.r = simulation_config.initial_yaw_rate_rad_per_s
+    def restore_to_intial(self):
+        self.n = self.n_initial
+        self.e = self.e_initial
+        self.psi = self.psi_initial
+        self.u = self.u_initial
+        self.v = self.v_initial
+        self.r = self.r_initial
 
 
 class DistanceSimulation:
@@ -2429,26 +2447,31 @@ class DistanceSimulation:
     when and where the iceberg breach zone 1
     when and where the iceberg breach zone 2
     when and where the iceberg beach zone 3"""
-    def __init__(self, iceberg:IcebergDriftingModel1, zones_config:Zones):
+    def __init__(self, round, iceberg_config: IcebergConfiguration, simulation_config: SimulationConfiguration, environment_config: EnvironmentConfiguration, z_config: ZonesConfiguration):
         self.distance_results = defaultdict(list)
-        self.iceberg = iceberg
-        self.zones_config = zones_config
-        self.cpa_point = np.empty(4)
-        self.col_point = np.empty(3)
-        self.exc_point = np.empty(3)
-        self.zone1_point = np.empty(3)
-        self.zone2_point = np.empty(3)
-        self.zone3_point = np.empty(3)
-        self.breach_event = np.empty(5)
+        self.iceberg = IcebergDriftingModel1(iceberg_config, environment_config, simulation_config)
+        self.zones_config = Zones(z_config, iceberg_config)
+        self.cpa_point = np.empty(4).tolist()
+        self.col_point = np.empty(3).tolist()
+        self.exc_point = np.empty(3).tolist()
+        self.zone1_point = np.empty(3).tolist()
+        self.zone2_point = np.empty(3).tolist()
+        self.zone3_point = np.empty(3).tolist()
+        self.breach_event = np.empty(5).tolist()
+        self.round_results = defaultdict(list)
+        self.n = round
+        self.dis_lists = np.empty(self.n, dtype=object)
+        self.sim_lists = np.empty(self.n, dtype=object)
 
     def simulation(self):
         max_wind_speed = 25
         self.distance_results.clear()
         self.iceberg.simulation_results.clear()
+        self.iceberg.restore_to_intial()
         self.iceberg.int.time = 0
         continue_simulation = True
         while self.iceberg.int.time <= self.iceberg.int.sim_time and continue_simulation:
-            #self.iceberg.wind_speed = random.random()*max_wind_speed
+            self.iceberg.wind_speed = random.random()*max_wind_speed
             self.iceberg.update_differentials()
             self.iceberg.integrate_differentials()
             self.iceberg.store_simulation_data()
@@ -2473,28 +2496,22 @@ class DistanceSimulation:
             self.distance_results['Distance to zone 1'].append(d_to_zone1)
             self.distance_results['Distance to zone 2'].append(d_to_zone2)
             self.distance_results['Distance to zone 3'].append(d_to_zone3)
-            self.distance_results['Collision event'].append(col)
 
             if col == 1:
 
                 continue_simulation = False
-                col_time=self.iceberg.int.time
                 print('Collision occur at: ', self.iceberg.int.time, 's')
                 print("Closest point to Structure:", self.zones_config.distance(self.iceberg.n, self.iceberg.e), 'm', "CPA:", self.iceberg.n, self.iceberg.e)
             elif self.iceberg.n > self.zones_config.r3 + self.zones_config.n:
                 continue_simulation = False
             self.iceberg.int.next_time()
+
+
     def cpa(self):
         """distance_list = self.distance_results['Distance between iceberg and structure [m]']
         time_list = self.distance_results['Time [s]']
         d_north_list = distance_results['Distance between iceberg and structure in north direction [m]']
         d_east_list = distance_results['Distance between iceberg and structure in east direction [m]']"""
-
-        #cpaf = pd.DataFrame().from_dict(distance_list).min()
-        #cpa_d = pd.DataFrame(cpaf).to_numpy()[0, 0]
-        #cpaf_idx = pd.DataFrame().from_dict(distance_list).idxmin()
-        #cpa_idx = pd.DataFrame(cpaf_idx).to_numpy()[0, 0]
-        #cpa_time = pd.DataFrame().from_dict(time_list).loc(cpa_idx)
 
         cpa_d = min(self.distance_results['Distance between iceberg and structure [m]'])
         cpa_idx = self.distance_results['Distance between iceberg and structure [m]'].index(cpa_d)
@@ -2504,11 +2521,7 @@ class DistanceSimulation:
         cpa_loc[1] = self.iceberg.simulation_results['east position [m]'][cpa_idx]
         cpazone = self.zones_config.cpa_zone(cpa_d)
         self.cpa_point = [cpa_d, cpazone, cpa_time, cpa_loc]
-        self.col_point = np.empty(3).tolist()
-        self.exc_point = np.empty(3).tolist()
-        self.zone1_point = np.empty(3).tolist()
-        self.zone2_point = np.empty(3).tolist()
-        self.zone3_point = np.empty(3).tolist()
+
 
         if cpazone == -1:
             col = 1
@@ -2598,9 +2611,9 @@ class DistanceSimulation:
                            self.iceberg.simulation_results['east position [m]'][zone2_idx]]
             d_to_zone3 = self.distance_results['Distance to zone 3']
             zone3_idx = list(map(lambda i: i <= 0, d_to_zone3)).index(True)
-            self.zone3_point = (self.iceberg.simulation_results['time [s]'][zone3_idx],
+            self.zone3_point = [self.iceberg.simulation_results['time [s]'][zone3_idx],
                            self.iceberg.simulation_results['north position [m]'][zone3_idx],
-                           self.iceberg.simulation_results['east position [m]'][zone3_idx])
+                           self.iceberg.simulation_results['east position [m]'][zone3_idx]]
         elif cpazone == 3:
             col = 0
             exc_breach = 0
@@ -2620,38 +2633,20 @@ class DistanceSimulation:
             zone3_breach = 0
         self.breach_event = [col, exc_breach, zone1_breach, zone2_breach, zone3_breach]
 
-class MultiSimulation:
-    """this class is for
-    1) store data for each simulation,
-    2) calculate the distribution of cpa, tcpa etc. for all simulations"""
-    def __init__(self, sim_round, dsim_config:DistanceSimulation):
-        self.n = sim_round
-        self.round_results = defaultdict(list)
-        self.cpa_point = dsim_config.cpa_point
-        self.breach_event = dsim_config.breach_event
-        self.col_point = dsim_config.col_point
-        self.exc_point = dsim_config.exc_point
-        self.zone1_point = dsim_config.zone1_point
-        self.zone2_point = dsim_config.zone2_point
-        self.zone3_point = dsim_config.zone3_point
-        self.distance_results=dsim_config.distance_results
-        self.simulation_results = dsim_config.iceberg.simulation_results
-        self.dis_lists = np.empty(self.n, dtype=object)
-        self.sim_lists = np.empty(self.n, dtype=object)
-        self.sim = dsim_config
-
     def multsim(self):
         n = 1
         self.round_results.clear()
         while n <= self.n:
-            self.sim.simulation()
-            self.sim.cpa()
-            self.sim_lists[n - 1] = self.sim.iceberg.simulation_results
-            self.dis_lists[n - 1] = self.sim.distance_results
+            self.simulation()
+            self.cpa()
+            self.sim_lists[n - 1] = self.iceberg.simulation_results
+            self.dis_lists[n - 1] = self.distance_results
             self.round_results['simulation round'].append(n)
-            self.round_results['distance between the closest point of approach (cpa) and the structure'].append(self.cpa_point[0])
+            self.round_results['distance between the closest point of approach (cpa) and the structure'].append(
+                self.cpa_point[0])
             self.round_results['zone of closest point of approach (cpa)'].append(self.cpa_point[1])
-            self.round_results['time when iceberg reaches the closest point of approach (cpa)'].append(self.cpa_point[2])
+            self.round_results['time when iceberg reaches the closest point of approach (cpa)'].append(
+                self.cpa_point[2])
             self.round_results['location of the closest point of approach (cpa)'].append(self.cpa_point[3])
             self.round_results['breach event'].append(self.breach_event)
             self.round_results['where the iceberg breach the collision zone'].append(self.col_point[1:3])
@@ -2664,6 +2659,10 @@ class MultiSimulation:
             self.round_results['when the iceberg breach the zone 2'].append(self.zone2_point[0])
             self.round_results['where the iceberg breach the zone 3'].append(self.zone3_point[1:3])
             self.round_results['when the iceberg breach the zone 3'].append(self.zone3_point[0])
+
             n += 1
+
+
+
 
 
