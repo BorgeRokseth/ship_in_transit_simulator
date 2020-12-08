@@ -2461,7 +2461,21 @@ class DistanceSimulation:
         self.round_results = defaultdict(list)
         self.n = round
         self.dis_lists = np.empty(self.n, dtype=object)
-        self.sim_lists = np.empty(self.n, dtype=object)
+        self.t_lists = np.empty(self.n, dtype=object)
+        self.d_n_lists = np.empty(self.n, dtype=object)
+        self.d_e_lists = np.empty(self.n, dtype=object)
+        self.d_exc_lists = np.empty(self.n, dtype=object)
+        self.d_zone1_lists = np.empty(self.n, dtype=object)
+        self.d_zone2_lists = np.empty(self.n, dtype=object)
+        self.d_zone3_lists = np.empty(self.n, dtype=object)
+        self.n_lists = np.empty(self.n, dtype=object)
+        self.e_lists = np.empty(self.n, dtype=object)
+        self.windS_lists = np.empty(self.n, dtype=object)
+        self.windD_lists = np.empty(self.n, dtype=object)
+        self.u_lists = np.empty(self.n, dtype=object)
+        self.v_lists = np.empty(self.n, dtype=object)
+        self.yaw_lists = np.empty(self.n, dtype=object)
+        self.yaw_angle_lists = np.empty(self.n, dtype=object)
 
     def simulation(self):
         max_wind_speed = 25
@@ -2639,8 +2653,6 @@ class DistanceSimulation:
         while n <= self.n:
             self.simulation()
             self.cpa()
-            self.sim_lists[n - 1] = self.iceberg.simulation_results
-            self.dis_lists[n - 1] = self.distance_results
             self.round_results['simulation round'].append(n)
             self.round_results['distance between the closest point of approach (cpa) and the structure'].append(
                 self.cpa_point[0])
@@ -2659,6 +2671,23 @@ class DistanceSimulation:
             self.round_results['when the iceberg breach the zone 2'].append(self.zone2_point[0])
             self.round_results['where the iceberg breach the zone 3'].append(self.zone3_point[1:3])
             self.round_results['when the iceberg breach the zone 3'].append(self.zone3_point[0])
+
+            self.t_lists[n-1] = self.distance_results['Time [s]']
+            self.dis_lists[n-1] = self.distance_results['Distance between iceberg and structure [m]']
+            self.d_n_lists[n-1] = self.distance_results['Distance between iceberg and structure in north direction [m]']
+            self.d_e_lists[n-1] = self.distance_results['Distance between iceberg and structure in east direction [m]']
+            self.d_exc_lists[n-1] = self.distance_results['Distance to exclusion zone']
+            self.d_zone1_lists[n-1] =  self.distance_results['Distance to zone 1']
+            self.d_zone2_lists[n-1] = self.distance_results['Distance to zone 2']
+            self.d_zone3_lists[n-1] = self.distance_results['Distance to zone 3']
+            self.n_lists[n-1] = self.iceberg.simulation_results['north position [m]']
+            self.e_lists[n-1] = self.iceberg.simulation_results['east position [m]']
+            self.windS_lists[n-1] = self.iceberg.simulation_results['wind speed [m/sec]']
+            self.windD_lists[n-1] = self.iceberg.simulation_results['wind direction [radius]']
+            self.u_lists[n-1] = self.iceberg.simulation_results['forward speed[m/s]']
+            self.v_lists[n-1] = self.iceberg.simulation_results['sideways speed [m/s]']
+            self.yaw_lists[n-1] = self.iceberg.simulation_results['yaw rate [deg/sec]']
+            self.yaw_angle_lists[n-1] = self.iceberg.simulation_results['yaw angle [deg]']
 
             n += 1
 

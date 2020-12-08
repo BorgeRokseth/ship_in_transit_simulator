@@ -74,21 +74,25 @@ simulation_config = DriftSimulationConfiguration(
     initial_sideways_speed_m_per_s=0.2,
     initial_yaw_rate_rad_per_s=0,
     simulation_time=100000,
-    integration_step=5.0
+    integration_step=10.0
 )
 
 iceberg = IcebergDriftingModel1(iceberg_config=iceberg_config,
                                   environment_config=env_config,
                                   simulation_config=simulation_config
                                   )
-dsim = DistanceSimulation(100, iceberg_config=iceberg_config,
+dsim = DistanceSimulation(10, iceberg_config=iceberg_config,
                           simulation_config=simulation_config,
                           environment_config=env_config,
                           z_config=z_config
                           )
+
+
 dsim.multsim()
-print(dsim.dis_lists[1]['Distance between iceberg and structure [m]'])
 #print(dsim.round_results)
+for dis in dsim.d_zone1_lists:
+    distancePlot = plt.plot(dis)
+plt.show()
 cpazonePlot = plt.hist(dsim.round_results['zone of closest point of approach (cpa)'])
 plt.show()
 
