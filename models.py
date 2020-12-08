@@ -113,8 +113,6 @@ class ZonesConfiguration(NamedTuple):
     zone1_radius: float
     zone2_radius: float
     zone3_radius: float
-
-
 class MachineryMode:
     def __init__(self, params: MachineryModeParams):
         self.main_engine_capacity = params.main_engine_capacity
@@ -2447,7 +2445,7 @@ class DistanceSimulation:
     when and where the iceberg breach zone 1
     when and where the iceberg breach zone 2
     when and where the iceberg beach zone 3"""
-    def __init__(self, round, iceberg_config: IcebergConfiguration, simulation_config: SimulationConfiguration, environment_config: EnvironmentConfiguration, z_config: ZonesConfiguration):
+    def __init__(self, round, iceberg_config: IcebergConfiguration, simulation_config: DriftSimulationConfiguration, environment_config: EnvironmentConfiguration, z_config: ZonesConfiguration):
         self.distance_results = defaultdict(list)
         self.iceberg = IcebergDriftingModel1(iceberg_config, environment_config, simulation_config)
         self.zones_config = Zones(z_config, iceberg_config)
@@ -2688,7 +2686,6 @@ class DistanceSimulation:
             self.v_lists[n-1] = self.iceberg.simulation_results['sideways speed [m/s]']
             self.yaw_lists[n-1] = self.iceberg.simulation_results['yaw rate [deg/sec]']
             self.yaw_angle_lists[n-1] = self.iceberg.simulation_results['yaw angle [deg]']
-
             n += 1
 
 
