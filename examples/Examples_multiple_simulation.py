@@ -2,8 +2,8 @@ from models import IcebergDriftingModel1, \
     DriftSimulationConfiguration, \
     EnvironmentConfiguration, \
     IcebergConfiguration, \
-    Zones, \
     ZonesConfiguration, \
+    Zones, \
     ShipConfiguration, \
     DistanceSimulation, \
     Cost, \
@@ -110,12 +110,12 @@ print(cost_calculation.cost_msim())
 for dis in dsim.d_zone1_lists:
     distancePlot = plt.plot(dis)
 plt.show()
-cpa_zonePlot = plt.hist(dsim.round_results['zone of closest point of approach (cpa)'])
-plt.show()
+#cpa_zonePlot = plt.hist(dsim.round_results['zone of closest point of approach (cpa)'])
+#plt.show()
 
-cpa_d_Plot = plt.hist(dsim.round_results['distance between the closest point of approach (cpa) and the structure'])
-plt.show()
-cpa_t_Plot = plt.hist(dsim.round_results['time when iceberg reaches the closest point of approach (cpa)'])
-plt.show()
-cpa_loc_Plot = plt.plot(dsim.round_results['location of the closest point of approach (cpa)'])
-plt.show()
+#cpa_d_Plot = plt.hist(dsim.round_results['distance between the closest point of approach (cpa) and the structure'])
+#plt.show()
+#cpa_t_Plot = plt.hist(dsim.round_results['time when iceberg reaches the closest point of approach (cpa)'])
+#plt.show()
+#cpa_loc_Plot = plt.plot(dsim.round_results['location of the closest point of approach (cpa)'])
+#plt.show()
