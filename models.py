@@ -87,6 +87,7 @@ class MachineryModeParams(NamedTuple):
     electrical_capacity: float
     shaft_generator_state: str
 
+
 class IcebergConfiguration(NamedTuple):
     mass_tonnage: float
     coefficient_of_deadweight_to_displacement: float
@@ -104,24 +105,31 @@ class IcebergConfiguration(NamedTuple):
     nonlinear_friction_coefficient__in_surge: float
     nonlinear_friction_coefficient__in_sway: float
     nonlinear_friction_coefficient__in_yaw: float
+
+
 class ZonesConfiguration(NamedTuple):
     n_pos: float
     e_pos: float
-    object_radius:float
+    object_radius: float
     coll_radius: float
     excl_radius: float
     zone1_radius: float
     zone2_radius: float
     zone3_radius: float
 
+
 class IceCost(NamedTuple):
     disconnect_cost: float
-    light_col_cost:float
-    medium_col_cost:float
-    severe_col_cost:float
-    towing_cost:float
-    disconnect_time_cost:float
-    towing_time_cost:float
+    light_col_cost: float
+    medium_col_cost: float
+    severe_col_cost: float
+    towing_cost: float
+    disconnect_time_cost: float
+    towing_time_cost: float
+    Ki_lowerbound_severe: float
+    Ki_lowerbound_medium: float
+    Ki_lowerbound_light: float
+
 
 class MachineryMode:
     def __init__(self, params: MachineryModeParams):
@@ -145,7 +153,6 @@ class MachineryMode:
             self.available_propulsion_power = self.main_engine_capacity
             self.available_propulsion_power_main_engine = self.main_engine_capacity
             self.available_propulsion_power_electrical = 0
-
 
     def distribute_load(self, load_perc, hotel_load):
         total_load_propulsion = load_perc * self.available_propulsion_power
@@ -262,7 +269,6 @@ class ShipModel:
         self.kv = ship_config.nonlinear_friction_coefficient__in_sway  # 4000.0  # non-linear friction coeff in sway
         self.kr = ship_config.nonlinear_friction_coefficient__in_yaw  # 400.0  # non-linear friction coeff in yaw
 
-
         # Machinery system params
         self.machinery_modes = machinery_config.machinery_modes
         self.hotel_load = machinery_config.hotel_load  # 200000  # 0.2 MW
@@ -270,8 +276,8 @@ class ShipModel:
         mode = simulation_config.machinery_system_operating_mode
         self.mode = self.machinery_modes.list_of_modes[mode]
 
-        #self.p_rated_me = machinery_config.mcr_main_engine  # 2160000  # 2.16 MW
-        #self.p_rated_hsg = machinery_config.mcr_hybrid_shaft_generator  # 590000  # 0.59 MW
+        # self.p_rated_me = machinery_config.mcr_main_engine  # 2160000  # 2.16 MW
+        # self.p_rated_hsg = machinery_config.mcr_hybrid_shaft_generator  # 590000  # 0.59 MW
         self.w_rated_me = machinery_config.rated_speed_main_engine_rpm * np.pi / 30  # 1000 * np.pi / 30  # rated speed
         self.d_me = machinery_config.linear_friction_main_engine  # 68.0  # linear friction for main engine speed
         self.d_hsg = machinery_config.linear_friction_hybrid_shaft_generator  # 57.0  # linear friction for HSG speed
@@ -299,8 +305,8 @@ class ShipModel:
         self.p_rel_rated_me = 0.0
 
         # Configure machinery system according to self.mso
-        #self.mso_mode = simulation_config.machinery_system_operating_mode
-        #self.mode_selector(machinery_config.mcr_main_engine,
+        # self.mso_mode = simulation_config.machinery_system_operating_mode
+        # self.mode_selector(machinery_config.mcr_main_engine,
         #                   machinery_config.mcr_hybrid_shaft_generator)
 
         # Initial states (can be altered using self.set_state_vector(x))
@@ -741,7 +747,7 @@ class ShipModel:
         #    return load_perc * self.p_rel_rated_me / self.omega
         # else:
         #    return 0
-        #return min(load_perc * self.p_rel_rated_me / (self.omega + 0.1), self.p_rel_rated_me / 5 * np.pi / 30)
+        # return min(load_perc * self.p_rel_rated_me / (self.omega + 0.1), self.p_rel_rated_me / 5 * np.pi / 30)
         return min(load_perc * self.mode.available_propulsion_power_main_engine / (self.omega + 0.1),
                    self.mode.available_propulsion_power_main_engine / 5 * np.pi / 30)
 
@@ -924,8 +930,8 @@ class ShipModelSimplifiedPropulsion:
         self.p_rel_rated_me = 0.0
 
         # Configure machinery system according to self.mso
-        #self.mso_mode = simulation_config.machinery_system_operating_mode
-        #self.mode_selector(machinery_config.mcr_main_engine,
+        # self.mso_mode = simulation_config.machinery_system_operating_mode
+        # self.mode_selector(machinery_config.mcr_main_engine,
         #                   machinery_config.mcr_hybrid_shaft_generator)
 
         # Initial states (can be altered using self.set_state_vector(x))
@@ -1999,6 +2005,8 @@ class StaticObstacle:
         '''
         # ax = plt.gca()
         ax.add_patch(plt.Circle((self.e, self.n), radius=self.r, fill=True, color='grey'))
+
+
 class Zones:
     def __init__(self, z_config: ZonesConfiguration, iceberg_config: IcebergConfiguration):
         self.n = z_config.n_pos
@@ -2008,7 +2016,7 @@ class Zones:
         self.r1 = z_config.zone1_radius
         self.r2 = z_config.zone2_radius
         self.r3 = z_config.zone3_radius
-        self.collimargin = 0.5*(iceberg_config.waterlinelength_of_iceberg + z_config.object_radius)
+        self.collimargin = 0.5 * (iceberg_config.waterlinelength_of_iceberg + z_config.object_radius)
 
     def distance(self, n_iceberg, e_iceberg):
         ''' Returns the distance from a ship with coordinates (north, east)=
@@ -2029,17 +2037,18 @@ class Zones:
 
     def cpa_zone(self, d_to_s):
         """to calculate which zone the cpa (closest point of approach). d_to_s is the distance between the iceberg center and zone center"""
-        if d_to_s - self.collimargin-self.r <= 0:
-            cpazone = -1 #"Collision Zone"
-        elif d_to_s -self.collimargin -self.r0 <= 0:
-            cpazone = 0# "Exclusion Zone"
+        if d_to_s - self.collimargin - self.r <= 0:
+            cpazone = -1  # "Collision Zone"
+        elif d_to_s - self.collimargin - self.r0 <= 0:
+            cpazone = 0  # "Exclusion Zone"
         elif d_to_s - self.collimargin - self.r1 <= 0:
-            cpazone = 1 # "Zone 1"
+            cpazone = 1  # "Zone 1"
         elif d_to_s - self.collimargin - self.r2 <= 0:
             cpazone = 2  # "Zone 2"
         elif d_to_s - self.collimargin - self.r3 <= 0:
             cpazone = 3  # "Zone 3"
-        else:cpazone = 4 #"outside all zones"
+        else:
+            cpazone = 4  # "outside all zones"
         return cpazone
 
     def d_to_exclusion(self, n_iceberg, e_iceberg):
@@ -2049,12 +2058,12 @@ class Zones:
         '''
         rad_2 = (n_iceberg - self.n) ** 2 + (e_iceberg - self.e) ** 2
         rad = np.sqrt(abs(rad_2))
-        return rad - self.r0-self.collimargin
+        return rad - self.r0 - self.collimargin
 
     def colli_event(self, n_iceberg, e_iceberg):
         rad_2 = (n_iceberg - self.n) ** 2 + (e_iceberg - self.e) ** 2
         rad = np.sqrt(abs(rad_2))
-        if rad - self.collimargin-self.r <= 0:
+        if rad - self.collimargin - self.r <= 0:
             return 1
         else:
             return 0
@@ -2062,7 +2071,7 @@ class Zones:
     def breach_exclusion(self, n_iceberg, e_iceberg):
         rad_2 = (n_iceberg - self.n) ** 2 + (e_iceberg - self.e) ** 2
         rad = np.sqrt(abs(rad_2))
-        if rad - self.collimargin+self.r0 <= 0:
+        if rad - self.collimargin + self.r0 <= 0:
             return 1
         else:
             return 0
@@ -2072,35 +2081,37 @@ class Zones:
             map-view.
         '''
         # ax = plt.gca()
-        return plt.Circle((self.e, self.n), radius=self.r+self.collimargin, fill=False, color='red')
+        return plt.Circle((self.e, self.n), radius=self.r + self.collimargin, fill=False, color='red')
 
     def plot_excl(self):
         ''' This method can be used to plot the obstacle in a
             map-view.
         '''
         # ax = plt.gca()
-        return plt.Circle((self.e, self.n), radius=self.r0+self.collimargin, fill=False, color='red')
+        return plt.Circle((self.e, self.n), radius=self.r0 + self.collimargin, fill=False, color='red')
 
     def plot_zone1(self):
         ''' This method can be used to plot the obstacle in a
             map-view.
         '''
         # ax = plt.gca()
-        return plt.Circle((self.e, self.n), radius=self.r1+self.collimargin, fill=False, color='orange')
+        return plt.Circle((self.e, self.n), radius=self.r1 + self.collimargin, fill=False, color='orange')
 
     def plot_zone2(self):
         ''' This method can be used to plot the obstacle in a
             map-view.
         '''
         # ax = plt.gca()
-        return plt.Circle((self.e, self.n), radius=self.r2+self.collimargin, fill=False, color='blue')
+        return plt.Circle((self.e, self.n), radius=self.r2 + self.collimargin, fill=False, color='blue')
 
     def plot_zone3(self):
         ''' This method can be used to plot the obstacle in a
             map-view.
         '''
         # ax = plt.gca()
-        return plt.Circle((self.e, self.n), radius=self.r3+self.collimargin, fill=False, color='green')
+        return plt.Circle((self.e, self.n), radius=self.r3 + self.collimargin, fill=False, color='green')
+
+
 class IcebergDraw:
     ''' This class is used to calculate the coordinates of each
         corner of 80 meter long and 20meter wide ship seen from above,
@@ -2108,7 +2119,7 @@ class IcebergDraw:
         the ship heading and position
     '''
 
-    def __init__(self,iceberg_config:IcebergConfiguration):
+    def __init__(self, iceberg_config: IcebergConfiguration):
         self.l = iceberg_config.waterlinelength_of_iceberg
         self.b = iceberg_config.width_of_iceberg
 
@@ -2147,6 +2158,8 @@ class IcebergDraw:
         x_t = x_ned + north
         y_t = y_ned + east
         return x_t, y_t
+
+
 class IcebergDriftingModel1:
     ''' Creates a iceberg model object that can be used to simulate a iceberg drifting freely
 
@@ -2430,7 +2443,7 @@ class IcebergDriftingModel1:
         self.simulation_results['north position [m]'].append(self.n)
         self.simulation_results['east position [m]'].append(self.e)
         self.simulation_results['yaw angle [deg]'].append(self.t_yaw * 180 / np.pi)
-        self.simulation_results['forward speed[m/s]'].append(self.u)
+        self.simulation_results['forward speed [m/s]'].append(self.u)
         self.simulation_results['sideways speed [m/s]'].append(self.v)
         self.simulation_results['yaw rate [deg/sec]'].append(self.r * 180 / np.pi)
         self.simulation_results['wind speed [m/sec]'].append(self.wind_speed)
@@ -2455,11 +2468,13 @@ class DistanceSimulation:
     when and where the iceberg breach zone 1
     when and where the iceberg breach zone 2
     when and where the iceberg beach zone 3"""
-    def __init__(self, round, iceberg_config: IcebergConfiguration, simulation_config: DriftSimulationConfiguration, environment_config: EnvironmentConfiguration, z_config: ZonesConfiguration):
+
+    def __init__(self, round, iceberg_config: IcebergConfiguration, simulation_config: DriftSimulationConfiguration,
+                 environment_config: EnvironmentConfiguration, z_config: ZonesConfiguration):
         self.distance_results = defaultdict(list)
         self.iceberg = IcebergDriftingModel1(iceberg_config, environment_config, simulation_config)
         self.zones_config = Zones(z_config, iceberg_config)
-        self.cpa_point = np.empty(4).tolist()
+        self.cpa_point = np.empty(6).tolist()
         self.col_point = np.empty(3).tolist()
         self.exc_point = np.empty(3).tolist()
         self.zone1_point = np.empty(3).tolist()
@@ -2467,6 +2482,7 @@ class DistanceSimulation:
         self.zone3_point = np.empty(3).tolist()
         self.breach_event = np.empty(5).tolist()
         self.round_results = defaultdict(list)
+        # specify the number of simulation
         self.n = round
         self.dis_lists = np.empty(self.n, dtype=object)
         self.t_lists = np.empty(self.n, dtype=object)
@@ -2493,14 +2509,14 @@ class DistanceSimulation:
         self.iceberg.int.time = 0
         continue_simulation = True
         while self.iceberg.int.time <= self.iceberg.int.sim_time and continue_simulation:
-            self.iceberg.wind_speed = random.random()*max_wind_speed
+            #self.iceberg.wind_speed = random.random() * max_wind_speed
             self.iceberg.update_differentials()
             self.iceberg.integrate_differentials()
             self.iceberg.store_simulation_data()
             col = self.zones_config.colli_event(self.iceberg.n, self.iceberg.e)
 
             d = self.zones_config.distance(self.iceberg.n, self.iceberg.e)
-            d_to_exc = d-self.zones_config.r0-self.zones_config.collimargin
+            d_to_exc = d - self.zones_config.r0 - self.zones_config.collimargin
             d_to_zone1 = d - self.zones_config.r1 - self.zones_config.collimargin
             d_to_zone2 = d - self.zones_config.r2 - self.zones_config.collimargin
             d_to_zone3 = d - self.zones_config.r3 - self.zones_config.collimargin
@@ -2523,11 +2539,11 @@ class DistanceSimulation:
 
                 continue_simulation = False
                 print('Collision occur at: ', self.iceberg.int.time, 's')
-                print("Closest point to Structure:", self.zones_config.distance(self.iceberg.n, self.iceberg.e), 'm', "CPA:", self.iceberg.n, self.iceberg.e)
+                print("Closest point to Structure:", self.zones_config.distance(self.iceberg.n, self.iceberg.e), 'm',
+                      "CPA:", self.iceberg.n, self.iceberg.e)
             elif self.iceberg.n > self.zones_config.r3 + self.zones_config.n:
                 continue_simulation = False
             self.iceberg.int.next_time()
-
 
     def cpa(self):
         """distance_list = self.distance_results['Distance between iceberg and structure [m]']
@@ -2542,8 +2558,9 @@ class DistanceSimulation:
         cpa_loc[0] = self.iceberg.simulation_results['north position [m]'][cpa_idx]
         cpa_loc[1] = self.iceberg.simulation_results['east position [m]'][cpa_idx]
         cpazone = self.zones_config.cpa_zone(cpa_d)
-        self.cpa_point = [cpa_d, cpazone, cpa_time, cpa_loc]
-
+        cpa_speed_u = self.iceberg.simulation_results['forward speed [m/s]'][cpa_idx]
+        cpa_speed_v = self.iceberg.simulation_results['sideways speed [m/s]'][cpa_idx]
+        self.cpa_point = [cpa_d, cpazone, cpa_time, cpa_loc, cpa_speed_u, cpa_speed_v]
 
         if cpazone == -1:
             col = 1
@@ -2552,27 +2569,27 @@ class DistanceSimulation:
             zone2_breach = 1
             zone3_breach = 1
             self.col_point = [cpa_time, self.iceberg.simulation_results['north position [m]'][cpa_idx],
-                         self.iceberg.simulation_results['east position [m]'][cpa_idx]]
+                              self.iceberg.simulation_results['east position [m]'][cpa_idx]]
             d_to_exc = self.distance_results['Distance to exclusion zone']
             exc_idx = list(map(lambda i: i <= 0, d_to_exc)).index(True)
             self.exc_point = [self.iceberg.simulation_results['time [s]'][exc_idx],
-                         self.iceberg.simulation_results['north position [m]'][exc_idx],
-                         self.iceberg.simulation_results['east position [m]'][exc_idx]]
+                              self.iceberg.simulation_results['north position [m]'][exc_idx],
+                              self.iceberg.simulation_results['east position [m]'][exc_idx]]
             d_to_zone1 = self.distance_results['Distance to zone 1']
             zone1_idx = list(map(lambda i: i <= 0, d_to_zone1)).index(True)
             self.zone1_point = [self.iceberg.simulation_results['time [s]'][zone1_idx],
-                           self.iceberg.simulation_results['north position [m]'][zone1_idx],
-                           self.iceberg.simulation_results['east position [m]'][zone1_idx]]
+                                self.iceberg.simulation_results['north position [m]'][zone1_idx],
+                                self.iceberg.simulation_results['east position [m]'][zone1_idx]]
             d_to_zone2 = self.distance_results['Distance to zone 2']
             zone2_idx = list(map(lambda i: i <= 0, d_to_zone2)).index(True)
             self.zone2_point = [self.iceberg.simulation_results['time [s]'][zone2_idx],
-                           self.iceberg.simulation_results['north position [m]'][zone2_idx],
-                           self.iceberg.simulation_results['east position [m]'][zone2_idx]]
+                                self.iceberg.simulation_results['north position [m]'][zone2_idx],
+                                self.iceberg.simulation_results['east position [m]'][zone2_idx]]
             d_to_zone3 = self.distance_results['Distance to zone 3']
             zone3_idx = list(map(lambda i: i <= 0, d_to_zone3)).index(True)
             self.zone3_point = [self.iceberg.simulation_results['time [s]'][zone3_idx],
-                           self.iceberg.simulation_results['north position [m]'][zone3_idx],
-                           self.iceberg.simulation_results['east position [m]'][zone3_idx]]
+                                self.iceberg.simulation_results['north position [m]'][zone3_idx],
+                                self.iceberg.simulation_results['east position [m]'][zone3_idx]]
         elif cpazone == 0:
             col = 0
             exc_breach = 1
@@ -2582,23 +2599,23 @@ class DistanceSimulation:
             d_to_exc = self.distance_results['Distance to exclusion zone']
             exc_idx = list(map(lambda i: i <= 0, d_to_exc)).index(True)
             self.exc_point = [self.iceberg.simulation_results['time [s]'][exc_idx],
-                         self.iceberg.simulation_results['north position [m]'][exc_idx],
-                         self.iceberg.simulation_results['east position [m]'][exc_idx]]
+                              self.iceberg.simulation_results['north position [m]'][exc_idx],
+                              self.iceberg.simulation_results['east position [m]'][exc_idx]]
             d_to_zone1 = self.distance_results['Distance to zone 1']
             zone1_idx = list(map(lambda i: i <= 0, d_to_zone1)).index(True)
             self.zone1_point = [self.iceberg.simulation_results['time [s]'][zone1_idx],
-                           self.iceberg.simulation_results['north position [m]'][zone1_idx],
-                           self.iceberg.simulation_results['east position [m]'][zone1_idx]]
-            d_to_zone2 =self.distance_results['Distance to zone 2']
+                                self.iceberg.simulation_results['north position [m]'][zone1_idx],
+                                self.iceberg.simulation_results['east position [m]'][zone1_idx]]
+            d_to_zone2 = self.distance_results['Distance to zone 2']
             zone2_idx = list(map(lambda i: i <= 0, d_to_zone2)).index(True)
             self.zone2_point = [self.iceberg.simulation_results['time [s]'][zone2_idx],
-                           self.iceberg.simulation_results['north position [m]'][zone2_idx],
-                           self.iceberg.simulation_results['east position [m]'][zone2_idx]]
+                                self.iceberg.simulation_results['north position [m]'][zone2_idx],
+                                self.iceberg.simulation_results['east position [m]'][zone2_idx]]
             d_to_zone3 = self.distance_results['Distance to zone 3']
             zone3_idx = list(map(lambda i: i <= 0, d_to_zone3)).index(True)
             self.zone3_point = [self.iceberg.simulation_results['time [s]'][zone3_idx],
-                           self.iceberg.simulation_results['north position [m]'][zone3_idx],
-                           self.iceberg.simulation_results['east position [m]'][zone3_idx]]
+                                self.iceberg.simulation_results['north position [m]'][zone3_idx],
+                                self.iceberg.simulation_results['east position [m]'][zone3_idx]]
         elif cpazone == 1:
             col = 0
             exc_breach = 0
@@ -2608,18 +2625,18 @@ class DistanceSimulation:
             d_to_zone1 = self.distance_results['Distance to zone 1']
             zone1_idx = list(map(lambda i: i <= 0, d_to_zone1)).index(True)
             self.zone1_point = [self.iceberg.simulation_results['time [s]'][zone1_idx],
-                           self.iceberg.simulation_results['north position [m]'][zone1_idx],
-                           self.iceberg.simulation_results['east position [m]'][zone1_idx]]
+                                self.iceberg.simulation_results['north position [m]'][zone1_idx],
+                                self.iceberg.simulation_results['east position [m]'][zone1_idx]]
             d_to_zone2 = self.distance_results['Distance to zone 2']
             zone2_idx = list(map(lambda i: i <= 0, d_to_zone2)).index(True)
             self.zone2_point = [self.iceberg.simulation_results['time [s]'][zone2_idx],
-                           self.iceberg.simulation_results['north position [m]'][zone2_idx],
-                           self.iceberg.simulation_results['east position [m]'][zone2_idx]]
+                                self.iceberg.simulation_results['north position [m]'][zone2_idx],
+                                self.iceberg.simulation_results['east position [m]'][zone2_idx]]
             d_to_zone3 = self.distance_results['Distance to zone 3']
             zone3_idx = list(map(lambda i: i <= 0, d_to_zone3)).index(True)
             self.zone3_point = [self.iceberg.simulation_results['time [s]'][zone3_idx],
-                           self.iceberg.simulation_results['north position [m]'][zone3_idx],
-                           self.iceberg.simulation_results['east position [m]'][zone3_idx]]
+                                self.iceberg.simulation_results['north position [m]'][zone3_idx],
+                                self.iceberg.simulation_results['east position [m]'][zone3_idx]]
         elif cpazone == 2:
             col = 0
             exc_breach = 0
@@ -2629,13 +2646,13 @@ class DistanceSimulation:
             d_to_zone2 = self.distance_results['Distance to zone 2']
             zone2_idx = list(map(lambda i: i <= 0, d_to_zone2)).index(True)
             self.zone2_point = [self.iceberg.simulation_results['time [s]'][zone2_idx],
-                           self.iceberg.simulation_results['north position [m]'][zone2_idx],
-                           self.iceberg.simulation_results['east position [m]'][zone2_idx]]
+                                self.iceberg.simulation_results['north position [m]'][zone2_idx],
+                                self.iceberg.simulation_results['east position [m]'][zone2_idx]]
             d_to_zone3 = self.distance_results['Distance to zone 3']
             zone3_idx = list(map(lambda i: i <= 0, d_to_zone3)).index(True)
             self.zone3_point = [self.iceberg.simulation_results['time [s]'][zone3_idx],
-                           self.iceberg.simulation_results['north position [m]'][zone3_idx],
-                           self.iceberg.simulation_results['east position [m]'][zone3_idx]]
+                                self.iceberg.simulation_results['north position [m]'][zone3_idx],
+                                self.iceberg.simulation_results['east position [m]'][zone3_idx]]
         elif cpazone == 3:
             col = 0
             exc_breach = 0
@@ -2645,8 +2662,8 @@ class DistanceSimulation:
             d_to_zone3 = self.distance_results['Distance to zone 3']
             zone3_idx = list(map(lambda i: i <= 0, d_to_zone3)).index(True)
             self.zone3_point = [self.iceberg.simulation_results['time [s]'][zone3_idx],
-                           self.iceberg.simulation_results['north position [m]'][zone3_idx],
-                           self.iceberg.simulation_results['east position [m]'][zone3_idx]]
+                                self.iceberg.simulation_results['north position [m]'][zone3_idx],
+                                self.iceberg.simulation_results['east position [m]'][zone3_idx]]
         else:
             col = 0
             exc_breach = 0
@@ -2656,6 +2673,7 @@ class DistanceSimulation:
         self.breach_event = [col, exc_breach, zone1_breach, zone2_breach, zone3_breach]
 
     def multsim(self):
+        """this function is to conduct multiple simulations and record data fro each simulation"""
         n = 1
         self.round_results.clear()
         while n <= self.n:
@@ -2679,77 +2697,116 @@ class DistanceSimulation:
             self.round_results['when the iceberg breach the zone 2'].append(self.zone2_point[0])
             self.round_results['where the iceberg breach the zone 3'].append(self.zone3_point[1:3])
             self.round_results['when the iceberg breach the zone 3'].append(self.zone3_point[0])
+            self.round_results['forward speed when the iceberg approach the structure'].append(self.cpa_point[4])
+            self.round_results['sideways speed when the iceberg approach the structure'].append(self.cpa_point[5])
 
-            self.t_lists[n-1] = self.distance_results['Time [s]']
-            self.dis_lists[n-1] = self.distance_results['Distance between iceberg and structure [m]']
-            self.d_n_lists[n-1] = self.distance_results['Distance between iceberg and structure in north direction [m]']
-            self.d_e_lists[n-1] = self.distance_results['Distance between iceberg and structure in east direction [m]']
-            self.d_exc_lists[n-1] = self.distance_results['Distance to exclusion zone']
-            self.d_zone1_lists[n-1] =  self.distance_results['Distance to zone 1']
-            self.d_zone2_lists[n-1] = self.distance_results['Distance to zone 2']
-            self.d_zone3_lists[n-1] = self.distance_results['Distance to zone 3']
-            self.n_lists[n-1] = self.iceberg.simulation_results['north position [m]']
-            self.e_lists[n-1] = self.iceberg.simulation_results['east position [m]']
-            self.windS_lists[n-1] = self.iceberg.simulation_results['wind speed [m/sec]']
-            self.windD_lists[n-1] = self.iceberg.simulation_results['wind direction [radius]']
-            self.u_lists[n-1] = self.iceberg.simulation_results['forward speed[m/s]']
-            self.v_lists[n-1] = self.iceberg.simulation_results['sideways speed [m/s]']
-            self.yaw_lists[n-1] = self.iceberg.simulation_results['yaw rate [deg/sec]']
-            self.yaw_angle_lists[n-1] = self.iceberg.simulation_results['yaw angle [deg]']
+            self.t_lists[n - 1] = self.distance_results['Time [s]']
+            self.dis_lists[n - 1] = self.distance_results['Distance between iceberg and structure [m]']
+            self.d_n_lists[n - 1] = self.distance_results[
+                'Distance between iceberg and structure in north direction [m]']
+            self.d_e_lists[n - 1] = self.distance_results[
+                'Distance between iceberg and structure in east direction [m]']
+            self.d_exc_lists[n - 1] = self.distance_results['Distance to exclusion zone']
+            self.d_zone1_lists[n - 1] = self.distance_results['Distance to zone 1']
+            self.d_zone2_lists[n - 1] = self.distance_results['Distance to zone 2']
+            self.d_zone3_lists[n - 1] = self.distance_results['Distance to zone 3']
+            self.n_lists[n - 1] = self.iceberg.simulation_results['north position [m]']
+            self.e_lists[n - 1] = self.iceberg.simulation_results['east position [m]']
+            self.windS_lists[n - 1] = self.iceberg.simulation_results['wind speed [m/sec]']
+            self.windD_lists[n - 1] = self.iceberg.simulation_results['wind direction [radius]']
+            self.u_lists[n - 1] = self.iceberg.simulation_results['forward speed [m/s]']
+            self.v_lists[n - 1] = self.iceberg.simulation_results['sideways speed [m/s]']
+            self.yaw_lists[n - 1] = self.iceberg.simulation_results['yaw rate [deg/sec]']
+            self.yaw_angle_lists[n - 1] = self.iceberg.simulation_results['yaw angle [deg]']
             n += 1
 
     def col_pro(self):
-        prob = self.round_results['location of the closest point of approach (cpa)'].count(-1)/self.n
+        prob = self.round_results['location of the closest point of approach (cpa)'].count(-1) / self.n
         return prob
 
     def exc_pro(self):
-        prob = self.round_results['location of the closest point of approach (cpa)'].count(0)/self.n
-        return prob
-    def zone1_pro(self):
-        prob = self.round_results['location of the closest point of approach (cpa)'].count(1)/self.n
-        return prob
-    def zone2_pro(self):
-        prob = self.round_results['location of the closest point of approach (cpa)'].count(2)/self.n
-        return prob
-    def zone3_pro(self):
-        prob = self.round_results['location of the closest point of approach (cpa)'].count(3)/self.n
-        return prob
-    def outside_pro(self):
-        prob = 1 - self.round_results['location of the closest point of approach (cpa)'].count(4)/self.n
+        prob = self.round_results['location of the closest point of approach (cpa)'].count(0) / self.n
         return prob
 
-    def col_type(self):
-        cpa_d = min(self.distance_results['Distance between iceberg and structure [m]'])
-        cpa_idx = self.distance_results['Distance between iceberg and structure [m]'].index(cpa_d)
-        col_velocity_2 = self.iceberg.simulation_results['forward speed[m/s]'][cpa_idx]**2+self.iceberg.simulation_results['sideways speed[m/s]'][cpa_idx]**2
-        kinetics = 0.5*self.iceberg.mass*col_velocity_2
-        return kinetics
+    def zone1_pro(self):
+        prob = self.round_results['location of the closest point of approach (cpa)'].count(1) / self.n
+        return prob
+
+    def zone2_pro(self):
+        prob = self.round_results['location of the closest point of approach (cpa)'].count(2) / self.n
+        return prob
+
+    def zone3_pro(self):
+        prob = self.round_results['location of the closest point of approach (cpa)'].count(3) / self.n
+        return prob
+
+    def outside_pro(self):
+        prob = 1 - self.round_results['location of the closest point of approach (cpa)'].count(4) / self.n
+        return prob
+
 
 class Cost:
-    def __init__(self,multi_simulation:DistanceSimulation, icecost_config: IceCost):
-        self.dsim =multi_simulation
+    def __init__(self, multi_simulation: DistanceSimulation, ice_cost_config: IceCost,
+                 env_config: EnvironmentConfiguration):
+        self.dsim = multi_simulation
         self.tow_s_prob = 0.7
-        self.disconnect_s_prob =0.98
-        self.icecost = icecost_config
+        self.disconnect_s_prob = 0.98
+        self.icecost = ice_cost_config
+        self.env = env_config
 
-    def cost_cal(self):
-        col_prob = self.dsim.col_pro()
-        col_type=self.dsim.col_type()
-        if col_type == 1:
+    def col_kinetics(self, col_velocity_2):
+        kinetics = 0.5 * self.dsim.iceberg.mass * col_velocity_2
+        return kinetics
+
+    def col_type(self, col_velocity_2):
+        if self.col_kinetics(col_velocity_2) >= self.icecost.Ki_lowerbound_severe:
+            col_type = "Severe Collision"
+        elif self.col_kinetics(col_velocity_2) >= self.icecost.Ki_lowerbound_medium:
+            col_type = "Medium Collision"
+        elif self.col_kinetics(col_velocity_2) >= self.icecost.Ki_lowerbound_light:
+            col_type = "Light Collision"
+        else:
+            col_type = "Collision can be ignored"
+        return col_type
+
+    def update_tow_success(self, tcpa):
+        if tcpa < self.icecost.towing_time_cost:
+            self.tow_s_prob = 0
+        elif tcpa >= 1.5 * self.icecost.towing_time_cost:
+            self.tow_s_prob = 0.8
+
+    def cost_cal(self, col_event, col_velocity_2):
+        col_type = self.col_type(col_velocity_2)
+        if col_type == "Light Collision":
             col_cost = self.icecost.light_col_cost
-        elif col_type <= 2:
+        elif col_type == "Medium Collision":
             col_cost = self.icecost.medium_col_cost
-        elif col_type <= 3:
+        elif col_type == "Severe Collision":
             col_cost = self.icecost.severe_col_cost
         else:
             col_cost = 0
-        mean_col_cost = col_cost*col_prob
-        return mean_col_cost
+        col_pro = col_event * np.array([1 - self.tow_s_prob, 1 - self.disconnect_s_prob, 1])
+        operation_cost = np.array([self.icecost.towing_cost, self.icecost.disconnect_cost, 0])
+        mean_cost = col_pro * col_cost + operation_cost
+        return mean_cost
 
-
-
-
-
-
-
-
+    def cost_msim(self):
+        n = self.dsim.n
+        m = 1
+        total_cost = np.zeros(3)
+        col_times = 0
+        while m <= n:
+            idx = m - 1
+            col_event = self.dsim.round_results['zone of closest point of approach (cpa)'][idx]
+            col_event = self.dsim.round_results['breach event'][idx][0]
+            tcpa = self.dsim.round_results['time when iceberg reaches the closest point of approach (cpa)'][idx]
+            col_velocity_2 = self.dsim.round_results['forward speed when the iceberg approach the structure'][
+                                 idx] ** 2 + \
+                             self.dsim.round_results['sideways speed when the iceberg approach the structure'][idx] ** 2
+            self.update_tow_success(tcpa)
+            cost_single = self.cost_cal(col_event, col_velocity_2)
+            total_cost += cost_single
+            col_times += col_event
+            m += 1
+        average_cost = total_cost / n
+        return col_times, average_cost

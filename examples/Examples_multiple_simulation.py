@@ -1,11 +1,13 @@
 from models import IcebergDriftingModel1, \
     DriftSimulationConfiguration, \
     EnvironmentConfiguration, \
-    IcebergConfiguration,\
-    Zones,\
-    ZonesConfiguration,\
-    ShipConfiguration,\
-    DistanceSimulation
+    IcebergConfiguration, \
+    Zones, \
+    ZonesConfiguration, \
+    ShipConfiguration, \
+    DistanceSimulation, \
+    Cost, \
+    IceCost
 import pandas as pd
 import matplotlib.pyplot as plt
 import random
@@ -37,8 +39,7 @@ env_config = EnvironmentConfiguration(
     wind_speed=15,
 )
 
-
-ship_config=ShipConfiguration(
+ship_config = ShipConfiguration(
     coefficient_of_deadweight_to_displacement=0.7,
     bunkers=200000,
     ballast=200000,
@@ -78,22 +79,38 @@ simulation_config = DriftSimulationConfiguration(
 )
 
 iceberg = IcebergDriftingModel1(iceberg_config=iceberg_config,
-                                  environment_config=env_config,
-                                  simulation_config=simulation_config
-                                  )
+                                environment_config=env_config,
+                                simulation_config=simulation_config
+                                )
 dsim = DistanceSimulation(10, iceberg_config=iceberg_config,
                           simulation_config=simulation_config,
                           environment_config=env_config,
                           z_config=z_config
                           )
 
-
+ice_cost_config = IceCost(
+    disconnect_cost=10,
+    light_col_cost=2,
+    medium_col_cost=30,
+    severe_col_cost=1000,
+    towing_cost=1,
+    disconnect_time_cost=3600,  # unit is second, equal to 60 minutes.
+    towing_time_cost=14400,  # unit is second, equal to 4 hours.
+    Ki_lowerbound_severe=50000000,
+    Ki_lowerbound_medium=20000000,
+    Ki_lowerbound_light=10000000,
+)
+cost_calculation = Cost(multi_simulation=dsim,
+                        ice_cost_config=ice_cost_config,
+                        env_config=env_config)
 dsim.multsim()
-#print(dsim.round_results)
+print(cost_calculation.cost_msim())
+
+# print(dsim.round_results)
 for dis in dsim.d_zone1_lists:
     distancePlot = plt.plot(dis)
 plt.show()
-cpazonePlot = plt.hist(dsim.round_results['zone of closest point of approach (cpa)'])
+cpa_zonePlot = plt.hist(dsim.round_results['zone of closest point of approach (cpa)'])
 plt.show()
 
 cpa_d_Plot = plt.hist(dsim.round_results['distance between the closest point of approach (cpa) and the structure'])
@@ -102,4 +119,3 @@ cpa_t_Plot = plt.hist(dsim.round_results['time when iceberg reaches the closest 
 plt.show()
 cpa_loc_Plot = plt.plot(dsim.round_results['location of the closest point of approach (cpa)'])
 plt.show()
-
