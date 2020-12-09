@@ -113,6 +113,16 @@ class ZonesConfiguration(NamedTuple):
     zone1_radius: float
     zone2_radius: float
     zone3_radius: float
+
+class IceCost(NamedTuple):
+    disconnect_cost: float
+    light_col_cost:float
+    medium_col_cost:float
+    severe_col_cost:float
+    towing_cost:float
+    disconnect_time_cost:float
+    towing_time_cost:float
+
 class MachineryMode:
     def __init__(self, params: MachineryModeParams):
         self.main_engine_capacity = params.main_engine_capacity
@@ -2687,6 +2697,57 @@ class DistanceSimulation:
             self.yaw_lists[n-1] = self.iceberg.simulation_results['yaw rate [deg/sec]']
             self.yaw_angle_lists[n-1] = self.iceberg.simulation_results['yaw angle [deg]']
             n += 1
+
+    def col_pro(self):
+        prob = self.round_results['location of the closest point of approach (cpa)'].count(-1)/self.n
+        return prob
+
+    def exc_pro(self):
+        prob = self.round_results['location of the closest point of approach (cpa)'].count(0)/self.n
+        return prob
+    def zone1_pro(self):
+        prob = self.round_results['location of the closest point of approach (cpa)'].count(1)/self.n
+        return prob
+    def zone2_pro(self):
+        prob = self.round_results['location of the closest point of approach (cpa)'].count(2)/self.n
+        return prob
+    def zone3_pro(self):
+        prob = self.round_results['location of the closest point of approach (cpa)'].count(3)/self.n
+        return prob
+    def outside_pro(self):
+        prob = 1 - self.round_results['location of the closest point of approach (cpa)'].count(4)/self.n
+        return prob
+
+    def col_type(self):
+        cpa_d = min(self.distance_results['Distance between iceberg and structure [m]'])
+        cpa_idx = self.distance_results['Distance between iceberg and structure [m]'].index(cpa_d)
+        col_velocity_2 = self.iceberg.simulation_results['forward speed[m/s]'][cpa_idx]**2+self.iceberg.simulation_results['sideways speed[m/s]'][cpa_idx]**2
+        kinetics = 0.5*self.iceberg.mass*col_velocity_2
+        return kinetics
+
+class Cost:
+    def __init__(self,multi_simulation:DistanceSimulation, icecost_config: IceCost):
+        self.dsim =multi_simulation
+        self.tow_s_prob = 0.7
+        self.disconnect_s_prob =0.98
+        self.icecost = icecost_config
+
+    def cost_cal(self):
+        col_prob = self.dsim.col_pro()
+        col_type=self.dsim.col_type()
+        if col_type == 1:
+            col_cost = self.icecost.light_col_cost
+        elif col_type <= 2:
+            col_cost = self.icecost.medium_col_cost
+        elif col_type <= 3:
+            col_cost = self.icecost.severe_col_cost
+        else:
+            col_cost = 0
+        mean_col_cost = col_cost*col_prob
+        return mean_col_cost
+
+
+
 
 
 

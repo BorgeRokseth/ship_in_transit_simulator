@@ -100,6 +100,6 @@ cpa_d_Plot = plt.hist(dsim.round_results['distance between the closest point of 
 plt.show()
 cpa_t_Plot = plt.hist(dsim.round_results['time when iceberg reaches the closest point of approach (cpa)'])
 plt.show()
-cpa_loc_Plot = plt.hist(dsim.round_results['location of the closest point of approach (cpa)'])
+cpa_loc_Plot = plt.plot(dsim.round_results['location of the closest point of approach (cpa)'])
 plt.show()
 
