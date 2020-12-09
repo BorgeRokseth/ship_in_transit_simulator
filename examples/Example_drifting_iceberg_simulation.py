@@ -2,7 +2,8 @@ from models import IcebergDriftingModel1, \
     DriftSimulationConfiguration, \
     EnvironmentConfiguration, \
     IcebergConfiguration,\
-    Zones
+    Zones,\
+    ZonesConfiguration
 import pandas as pd
 import matplotlib.pyplot as plt
 import random
@@ -33,7 +34,7 @@ env_config = EnvironmentConfiguration(
     wind_speed=15,
 )
 
-zones_config = Zones(
+zones_config = ZonesConfiguration(
     n_pos=0,
     e_pos=0,
     object_radius=100,
@@ -42,7 +43,6 @@ zones_config = Zones(
     zone1_radius=2000,
     zone2_radius=5000,
     zone3_radius=10000,
-    iceberg_config=iceberg_config
 )
 simulation_config = DriftSimulationConfiguration(
     initial_north_position_m=-50000,

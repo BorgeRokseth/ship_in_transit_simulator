@@ -2484,6 +2484,7 @@ class DistanceSimulation:
         self.round_results = defaultdict(list)
         # specify the number of simulation
         self.n = round
+        # variables for saving data
         self.dis_lists = np.empty(self.n, dtype=object)
         self.t_lists = np.empty(self.n, dtype=object)
         self.d_n_lists = np.empty(self.n, dtype=object)
@@ -2509,7 +2510,7 @@ class DistanceSimulation:
         self.iceberg.int.time = 0
         continue_simulation = True
         while self.iceberg.int.time <= self.iceberg.int.sim_time and continue_simulation:
-            #self.iceberg.wind_speed = random.random() * max_wind_speed
+            self.iceberg.wind_speed = random.random() * max_wind_speed
             self.iceberg.update_differentials()
             self.iceberg.integrate_differentials()
             self.iceberg.store_simulation_data()
@@ -2721,28 +2722,29 @@ class DistanceSimulation:
             n += 1
 
     def col_pro(self):
-        prob = self.round_results['location of the closest point of approach (cpa)'].count(-1) / self.n
+        prob = self.round_results['zone of closest point of approach (cpa)'].count(-1) / self.n
         return prob
 
     def exc_pro(self):
-        prob = self.round_results['location of the closest point of approach (cpa)'].count(0) / self.n
+        prob = self.round_results['zone of closest point of approach (cpa)'].count(0) / self.n
         return prob
 
     def zone1_pro(self):
-        prob = self.round_results['location of the closest point of approach (cpa)'].count(1) / self.n
+        prob = self.round_results['zone of closest point of approach (cpa)'].count(1) / self.n
         return prob
 
     def zone2_pro(self):
-        prob = self.round_results['location of the closest point of approach (cpa)'].count(2) / self.n
+        prob = self.round_results['zone of closest point of approach (cpa)'].count(2) / self.n
         return prob
 
     def zone3_pro(self):
-        prob = self.round_results['location of the closest point of approach (cpa)'].count(3) / self.n
+        prob = self.round_results['zone of closest point of approach (cpa)'].count(3) / self.n
         return prob
 
     def outside_pro(self):
-        prob = 1 - self.round_results['location of the closest point of approach (cpa)'].count(4) / self.n
+        prob = 1 - self.round_results['zone of closest point of approach (cpa)'].count(4) / self.n
         return prob
+
 
 
 class Cost:
@@ -2753,6 +2755,8 @@ class Cost:
         self.disconnect_s_prob = 0.98
         self.icecost = ice_cost_config
         self.env = env_config
+        self.col_no = 0
+        self.average_cost = np.zeros(3)
 
     def col_kinetics(self, col_velocity_2):
         kinetics = 0.5 * self.dsim.iceberg.mass * col_velocity_2
@@ -2794,7 +2798,7 @@ class Cost:
         n = self.dsim.n
         m = 1
         total_cost = np.zeros(3)
-        col_times = 0
+        self.col_no = 0
         while m <= n:
             idx = m - 1
             col_event = self.dsim.round_results['zone of closest point of approach (cpa)'][idx]
@@ -2806,7 +2810,45 @@ class Cost:
             self.update_tow_success(tcpa)
             cost_single = self.cost_cal(col_event, col_velocity_2)
             total_cost += cost_single
-            col_times += col_event
+            self.col_no += col_event
             m += 1
-        average_cost = total_cost / n
-        return col_times, average_cost
+        self.average_cost = total_cost / n
+
+class SimulationGroups:
+    """This class is to conduct groups of simulations, to obtain a probability distribution of operation cost, collision probability, etc."""
+    def __init__(self, groups, dsim: DistanceSimulation, cost: Cost):
+        self.groups = groups
+        self.dsim = dsim
+        self.cost = cost
+        self.cost_lists = []
+        self.col_prob_list = []
+        self.exc_prob_list = []
+        self.zone1_prob_list = []
+        self.zone2_prob_list = []
+        self.zone3_prob_list = []
+        self.outside_prob_list = []
+    def group_sim(self):
+        j= 1
+        self.cost_lists.clear()
+        self.col_prob_list.clear()
+        self.exc_prob_list.clear()
+        self.zone1_prob_list.clear()
+        self.zone2_prob_list.clear()
+        self.zone3_prob_list.clear()
+        self.outside_prob_list.clear()
+        while j <= self.groups:
+            self.dsim.multsim()
+            self.dsim.cpa()
+            self.cost.cost_msim()
+            col_prob = self.dsim.col_pro()
+            exc_prob = self.dsim.exc_pro()
+            self.cost_lists.append(self.cost.average_cost)
+            self.col_prob_list.append(self.dsim.col_pro())
+            self.exc_prob_list.append(self.dsim.exc_pro())
+            self.zone1_prob_list.append(self.dsim.zone1_pro())
+            self.zone2_prob_list.append(self.dsim.zone2_pro())
+            self.zone3_prob_list.append(self.dsim.zone3_pro())
+            self.outside_prob_list.append(self.dsim.outside_pro())
+            j += 1
+
+

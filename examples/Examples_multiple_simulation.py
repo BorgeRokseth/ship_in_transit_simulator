@@ -7,7 +7,8 @@ from models import IcebergDriftingModel1, \
     ShipConfiguration, \
     DistanceSimulation, \
     Cost, \
-    IceCost
+    IceCost,\
+    SimulationGroups
 import pandas as pd
 import matplotlib.pyplot as plt
 import random
@@ -82,7 +83,7 @@ iceberg = IcebergDriftingModel1(iceberg_config=iceberg_config,
                                 environment_config=env_config,
                                 simulation_config=simulation_config
                                 )
-dsim = DistanceSimulation(10, iceberg_config=iceberg_config,
+dsim = DistanceSimulation(100, iceberg_config=iceberg_config,
                           simulation_config=simulation_config,
                           environment_config=env_config,
                           z_config=z_config
@@ -103,13 +104,27 @@ ice_cost_config = IceCost(
 cost_calculation = Cost(multi_simulation=dsim,
                         ice_cost_config=ice_cost_config,
                         env_config=env_config)
-dsim.multsim()
-print(cost_calculation.cost_msim())
+
+group_sim = SimulationGroups(100, dsim=dsim, cost=cost_calculation)
+
+
+#dsim.multsim()
+#print(dsim.col_pro())
+#print(dsim.exc_pro())
+#print(dsim.zone1_pro())
+
+group_sim.group_sim()
+plt.hist(group_sim.col_prob_list)
+plt.hist(group_sim.exc_prob_list)
+plt.hist(group_sim.zone1_prob_list)
+
+#dsim.multsim()
+#print(cost_calculation.cost_msim())
 
 # print(dsim.round_results)
-for dis in dsim.d_zone1_lists:
-    distancePlot = plt.plot(dis)
-plt.show()
+#for dis in dsim.d_zone1_lists:
+#    distancePlot = plt.plot(dis)
+#plt.show()
 #cpa_zonePlot = plt.hist(dsim.round_results['zone of closest point of approach (cpa)'])
 #plt.show()
 
