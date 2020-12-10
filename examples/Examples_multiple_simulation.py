@@ -83,7 +83,7 @@ iceberg = IcebergDriftingModel1(iceberg_config=iceberg_config,
                                 environment_config=env_config,
                                 simulation_config=simulation_config
                                 )
-dsim = DistanceSimulation(100, iceberg_config=iceberg_config,
+dsim = DistanceSimulation(4, iceberg_config=iceberg_config,
                           simulation_config=simulation_config,
                           environment_config=env_config,
                           z_config=z_config
@@ -105,18 +105,18 @@ cost_calculation = Cost(multi_simulation=dsim,
                         ice_cost_config=ice_cost_config,
                         env_config=env_config)
 
-pool_sim = SimulationPools(100, dsim=dsim, cost=cost_calculation)
+pool_sim = SimulationPools(2, dsim=dsim, cost=cost_calculation)
 
 
-#dsim.multsim()
-#print(dsim.col_pro())
+dsim.multsim()
+print(dsim.col_pro())
 #print(dsim.exc_pro())
 #print(dsim.zone1_pro())
 
-pool_sim.pool_sim()
-plt.hist(pool_sim.col_prob_list)
-plt.hist(pool_sim.exc_prob_list)
-plt.hist(pool_sim.zone1_prob_list)
+#pool_sim.pool_sim()
+#plt.hist(pool_sim.col_prob_list)
+#plt.hist(pool_sim.exc_prob_list)
+#plt.hist(pool_sim.zone1_prob_list)
 
 #dsim.multsim()
 #print(cost_calculation.cost_msim())
