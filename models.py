@@ -7,6 +7,8 @@ import math
 import matplotlib.pyplot as plt
 import pandas as pd
 from collections import defaultdict
+
+from matplotlib.patches import Circle
 from typing import NamedTuple, List
 import random
 
@@ -2109,7 +2111,8 @@ class Zones:
             map-view.
         '''
         # ax = plt.gca()
-        return plt.Circle((self.e, self.n), radius=self.r3 + self.collimargin, fill=False, color='green')
+        circle3: Circle = plt.Circle((self.e, self.n), radius=self.r3 + self.collimargin, fill=False, color='green')
+        return circle3
 
 
 class IcebergDraw:
@@ -2742,7 +2745,7 @@ class DistanceSimulation:
         return prob
 
     def outside_pro(self):
-        prob = 1 - self.round_results['zone of closest point of approach (cpa)'].count(4) / self.n
+        prob = self.round_results['zone of closest point of approach (cpa)'].count(4) / self.n
         return prob
 
 
@@ -2787,7 +2790,7 @@ class Cost:
     def cost_cal(self, col_event, col_velocity_2):
         self.col_type(col_velocity_2)
         if col_event == 1:
-            if self.ki_level == "Can lead to light collision" & col_event == 1:
+            if self.ki_level == "Can lead to light collision":
                 col_cost = self.icecost.light_col_cost
                 self.col_con = "Light Collision"
             elif self.ki_level == "Can lead to medium collision":
@@ -2929,5 +2932,79 @@ class SimulationPools:
             self.yaw_lists.extend(self.dsim.yaw_lists)
             self.yaw_angle_lists.extend(self.dsim.yaw_angle_lists)
             j += 1
+class PlotEverything:
+    def plotdistance(self, sim):
+        global disPlot
+        for dis in sim.dis_lists:
+            disPlot = plt.plot(dis)
+        return disPlot
+    def plotcpaloc(self, sim, zone:Zones):
+        circle0 = zone.plot_coll()
+        circle1 = zone.plot_excl()
+        circle2 = zone.plot_zone1()
+        circle3 = zone.plot_zone2()
+        circle4 = zone.plot_zone3()
+        figure, axs = plt.subplots()
+
+        for loc in sim.cpa_loc_list:
+            plt.scatter(x=loc[0], y=loc[1])
+
+        axs.set_aspect('equal')
+        axs.add_artist(circle0)
+        axs.add_artist(circle1)
+        axs.add_artist(circle2)
+        axs.add_artist(circle3)
+        axs.add_artist(circle4)
+
+    def plotposition(self, sim):
+        global posPlot
+        for i in range(len(sim.n_lists)):
+            posPlot = plt.plot(sim.n_lists[i], sim.e_lists[i])
+        return posPlot
+
+    def plotT_Z(self, zone:Zones, sim):
+        circle0 = zone.plot_coll()
+        circle1 = zone.plot_excl()
+        circle2 = zone.plot_zone1()
+        circle3 = zone.plot_zone2()
+        circle4 = zone.plot_zone3()
+        figure, axs = plt.subplots()
+        self.plotposition(sim)
+        axs.set_aspect('equal')
+        axs.add_artist(circle0)
+        axs.add_artist(circle1)
+        axs.add_artist(circle2)
+        axs.add_artist(circle3)
+        axs.add_artist(circle4)
+        plt.show()
+
+    def plotProb(self,sim:SimulationPools):
+        figure, axs = plt.subplots(2, 3)
+        figure.suptitle("Probability distribution of CPA")
+        axs[0, 0].hist(sim.col_prob_list, range=(0, 1), bins=20)
+        axs[0, 0].set_title("Collision zone")
+        axs[0, 1].hist(sim.exc_prob_list, range=(0, 1), bins=20)
+        axs[0, 1].set_title("Exclusion zone")
+        axs[0, 2].hist(sim.zone1_prob_list, range=(0, 1), bins=20)
+        axs[0, 2].set_title("Zone 1")
+        axs[1, 0].hist(sim.zone2_prob_list, range=(0, 1), bins=20)
+        axs[1, 0].set_title("Zone 2")
+        axs[1, 1].hist(sim.zone3_prob_list, range=(0, 1), bins=20)
+        axs[1, 1].set_title("Zone 3")
+        axs[1, 2].hist(sim.outside_prob_list, range=(0, 1), bins=20)
+        axs[1, 2].set_title("Outside watching zones")
+
+    def plotcpazone(self, sim):
+        plt.hist(sim.cpa_zone_list)
+
+    def plotcpad(self, sim):
+        plt.hist(sim.cpa_d_list)
+
+    def plotcpat(self, sim):
+        plt.hist(sim.cpa_time_list)
+
+
+
+
 
 

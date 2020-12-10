@@ -8,7 +8,8 @@ from models import IcebergDriftingModel1, \
     DistanceSimulation, \
     Cost, \
     IceCost,\
-    SimulationPools
+    SimulationPools,\
+    PlotEverything
 import pandas as pd
 import matplotlib.pyplot as plt
 import random
@@ -83,7 +84,7 @@ iceberg = IcebergDriftingModel1(iceberg_config=iceberg_config,
                                 environment_config=env_config,
                                 simulation_config=simulation_config
                                 )
-dsim = DistanceSimulation(4, iceberg_config=iceberg_config,
+dsim = DistanceSimulation(10, iceberg_config=iceberg_config,
                           simulation_config=simulation_config,
                           environment_config=env_config,
                           z_config=z_config
@@ -104,16 +105,46 @@ ice_cost_config = IceCost(
 cost_calculation = Cost(multi_simulation=dsim,
                         ice_cost_config=ice_cost_config,
                         env_config=env_config)
+zone = Zones(z_config=z_config, iceberg_config=iceberg_config)
+pool_sim = SimulationPools(10, dsim=dsim, cost=cost_calculation)
 
-pool_sim = SimulationPools(2, dsim=dsim, cost=cost_calculation)
-
-
-dsim.multsim()
-print(dsim.col_pro())
+plotall = PlotEverything()
+#dsim.multsim()
+#print(dsim.col_pro())
 #print(dsim.exc_pro())
 #print(dsim.zone1_pro())
+#plotall.plotdistance(sim=pool_sim)
+pool_sim.pool_sim()
+#plotall.plotProb(sim=pool_sim)
+#plt.show()
+#figure, axs = plt.subplots()
+#axs1 = plotall.plotcpat(sim=pool_sim)
+#dsim.multsim()
+#plotall.plotdistance(sim=dsim)
+#pool_sim.plotposition()
+#axs2 = plotall.plotT_Z(zone=zone, sim=pool_sim)
+#pool_sim.plotdistance()
+plotall.plotcpaloc(zone=zone, sim=pool_sim)
+#zone.plot_zone3()
+#pool_sim.plotcpaloc()
+#circle0 = zone.plot_coll()
+#circle1 = zone.plot_excl()
+#circle2 = zone.plot_zone1()
+#circle3 = zone.plot_zone2()
+#circle4 = zone.plot_zone3()
 
-#pool_sim.pool_sim()
+#figure, axs = plt.subplots()
+#plt.xlim(-100000+zone.e, 100000+zone.e)
+#plt.ylim(-100000+zone.n, 100000+zone.n)
+#pool_sim.plotposition()
+#axs.set_aspect('equal')
+#axs.add_artist(circle0)
+#axs.add_artist(circle1)
+#axs.add_artist(circle2)
+#axs.add_artist(circle3)
+#axs.add_artist(circle4)
+#axs.add_artist(position)
+#plt.show()
 #plt.hist(pool_sim.col_prob_list)
 #plt.hist(pool_sim.exc_prob_list)
 #plt.hist(pool_sim.zone1_prob_list)
