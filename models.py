@@ -2814,7 +2814,7 @@ class Cost:
             m += 1
         self.average_cost = total_cost / n
 
-class SimulationGroups:
+class SimulationPools:
     """This class is to conduct groups of simulations, to obtain a probability distribution of operation cost, collision probability, etc."""
     def __init__(self, groups, dsim: DistanceSimulation, cost: Cost):
         self.groups = groups
@@ -2827,7 +2827,7 @@ class SimulationGroups:
         self.zone2_prob_list = []
         self.zone3_prob_list = []
         self.outside_prob_list = []
-    def group_sim(self):
+    def pool_sim(self):
         j= 1
         self.cost_lists.clear()
         self.col_prob_list.clear()

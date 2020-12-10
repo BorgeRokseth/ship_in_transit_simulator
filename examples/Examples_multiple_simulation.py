@@ -8,7 +8,7 @@ from models import IcebergDriftingModel1, \
     DistanceSimulation, \
     Cost, \
     IceCost,\
-    SimulationGroups
+    SimulationPools
 import pandas as pd
 import matplotlib.pyplot as plt
 import random
@@ -105,7 +105,7 @@ cost_calculation = Cost(multi_simulation=dsim,
                         ice_cost_config=ice_cost_config,
                         env_config=env_config)
 
-group_sim = SimulationGroups(100, dsim=dsim, cost=cost_calculation)
+pool_sim = SimulationPools(100, dsim=dsim, cost=cost_calculation)
 
 
 #dsim.multsim()
@@ -113,10 +113,10 @@ group_sim = SimulationGroups(100, dsim=dsim, cost=cost_calculation)
 #print(dsim.exc_pro())
 #print(dsim.zone1_pro())
 
-group_sim.group_sim()
-plt.hist(group_sim.col_prob_list)
-plt.hist(group_sim.exc_prob_list)
-plt.hist(group_sim.zone1_prob_list)
+pool_sim.pool_sim()
+plt.hist(pool_sim.col_prob_list)
+plt.hist(pool_sim.exc_prob_list)
+plt.hist(pool_sim.zone1_prob_list)
 
 #dsim.multsim()
 #print(cost_calculation.cost_msim())
