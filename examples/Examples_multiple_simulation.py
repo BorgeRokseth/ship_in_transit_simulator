@@ -77,7 +77,7 @@ simulation_config = DriftSimulationConfiguration(
     initial_sideways_speed_m_per_s=0.2,
     initial_yaw_rate_rad_per_s=0,
     simulation_time=100000,
-    integration_step=10.0
+    integration_step=30.0
 )
 
 iceberg = IcebergDriftingModel1(iceberg_config=iceberg_config,
@@ -100,7 +100,7 @@ ice_cost_config = IceCost(
     towing_time_cost=14400,  # unit is second, equal to 4 hours.
     Ki_lowerbound_severe=50000000,
     Ki_lowerbound_medium=20000000,
-    Ki_lowerbound_light=10000000,
+    Ki_lowerbound_light=5000000,
 )
 cost_calculation = Cost(multi_simulation=dsim,
                         ice_cost_config=ice_cost_config,
@@ -124,7 +124,13 @@ pool_sim.pool_sim()
 #pool_sim.plotposition()
 #axs2 = plotall.plotT_Z(zone=zone, sim=pool_sim)
 #pool_sim.plotdistance()
-plotall.plotcpaloc(zone=zone, sim=pool_sim)
+plotall.plot_distance(zone=zone, sim=pool_sim)
+plt.show()
+plotall.plot_T_Z(zone=zone, sim=pool_sim)
+plt.show()
+plotall.plot_Prob_2(sim=pool_sim)
+plotall.plot_cost(sim=pool_sim)
+plt.show
 #zone.plot_zone3()
 #pool_sim.plotcpaloc()
 #circle0 = zone.plot_coll()

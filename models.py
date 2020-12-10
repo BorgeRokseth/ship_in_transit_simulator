@@ -2090,14 +2090,14 @@ class Zones:
             map-view.
         '''
         # ax = plt.gca()
-        return plt.Circle((self.e, self.n), radius=self.r0 + self.collimargin, fill=False, color='red')
+        return plt.Circle((self.e, self.n), radius=self.r0 + self.collimargin, fill=False, color='orange')
 
     def plot_zone1(self):
         ''' This method can be used to plot the obstacle in a
             map-view.
         '''
         # ax = plt.gca()
-        return plt.Circle((self.e, self.n), radius=self.r1 + self.collimargin, fill=False, color='orange')
+        return plt.Circle((self.e, self.n), radius=self.r1 + self.collimargin, fill=False, color='yellow')
 
     def plot_zone2(self):
         ''' This method can be used to plot the obstacle in a
@@ -2933,43 +2933,50 @@ class SimulationPools:
             self.yaw_angle_lists.extend(self.dsim.yaw_angle_lists)
             j += 1
 class PlotEverything:
-    def plotdistance(self, sim):
-        global disPlot
-        for dis in sim.dis_lists:
-            disPlot = plt.plot(dis)
-        return disPlot
-    def plotcpaloc(self, sim, zone:Zones):
+    def plot_distance(self, sim, zone: Zones):
+
+        for i in range(len(sim.n_lists)):
+            plt.plot(sim.t_lists[i], sim.dis_lists[i])
+        plt.axhline(y=zone.collimargin + zone.r, color='r', linestyle='-', label='Collision boundary')
+        plt.axhline(y=zone.collimargin + zone.r0, color='orange', linestyle='-', label='Exclusion zone boundary')
+        plt.axhline(y=zone.collimargin + zone.r1, color='yellow', linestyle='-', label='Zone 1 boundary')
+        plt.axhline(y=zone.collimargin + zone.r2, color='blue', linestyle='-', label='Zone 2 boundary')
+        plt.axhline(y=zone.collimargin + zone.r3, color='green', linestyle='-', label='Zone 3 boundary')
+        plt.legend()
+        plt.ylabel('Distance between iceberg and structure [m]')
+        plt.xlabel('Time [s]')
+
+
+    def plot_cpa_loc(self, sim, zone: Zones):
         circle0 = zone.plot_coll()
         circle1 = zone.plot_excl()
         circle2 = zone.plot_zone1()
         circle3 = zone.plot_zone2()
         circle4 = zone.plot_zone3()
         figure, axs = plt.subplots()
-
-        for loc in sim.cpa_loc_list:
-            plt.scatter(x=loc[0], y=loc[1])
-
         axs.set_aspect('equal')
         axs.add_artist(circle0)
         axs.add_artist(circle1)
         axs.add_artist(circle2)
         axs.add_artist(circle3)
         axs.add_artist(circle4)
+        for loc in sim.cpa_loc_list:
+            plt.scatter(x=loc[0], y=loc[1])
 
-    def plotposition(self, sim):
+    def plot_position(self, sim):
         global posPlot
         for i in range(len(sim.n_lists)):
             posPlot = plt.plot(sim.n_lists[i], sim.e_lists[i])
         return posPlot
 
-    def plotT_Z(self, zone:Zones, sim):
+    def plot_T_Z(self, zone: Zones, sim):
         circle0 = zone.plot_coll()
         circle1 = zone.plot_excl()
         circle2 = zone.plot_zone1()
         circle3 = zone.plot_zone2()
         circle4 = zone.plot_zone3()
         figure, axs = plt.subplots()
-        self.plotposition(sim)
+        self.plot_position(sim)
         axs.set_aspect('equal')
         axs.add_artist(circle0)
         axs.add_artist(circle1)
@@ -2978,7 +2985,7 @@ class PlotEverything:
         axs.add_artist(circle4)
         plt.show()
 
-    def plotProb(self,sim:SimulationPools):
+    def plot_Prob(self,sim:SimulationPools):
         figure, axs = plt.subplots(2, 3)
         figure.suptitle("Probability distribution of CPA")
         axs[0, 0].hist(sim.col_prob_list, range=(0, 1), bins=20)
@@ -2994,14 +3001,28 @@ class PlotEverything:
         axs[1, 2].hist(sim.outside_prob_list, range=(0, 1), bins=20)
         axs[1, 2].set_title("Outside watching zones")
 
-    def plotcpazone(self, sim):
+    def plot_Prob_2(self, sim: SimulationPools):
+        plt.hist(sim.col_prob_list, color='red', label='collision')
+        plt.hist(sim.exc_prob_list, color='orange', label='Exclusion zone')
+        plt.hist(sim.zone1_prob_list, color='yellow', label='Zone 1')
+        plt.hist(sim.zone2_prob_list, color='blue', label='Zone 2')
+        plt.hist(sim.zone3_prob_list, color='green', label='Zone 3')
+        plt.hist(sim.outside_prob_list, color='grey', label='Outside zones')
+        plt.legend()
+        plt.xlabel('Probability distribution of CPA location')
+        plt.show()
+
+    def plot_cpazone(self, sim):
         plt.hist(sim.cpa_zone_list)
 
-    def plotcpad(self, sim):
+    def plot_cpad(self, sim):
         plt.hist(sim.cpa_d_list)
 
-    def plotcpat(self, sim):
+    def plot_cpat(self, sim):
         plt.hist(sim.cpa_time_list)
+
+    def plot_cost(self, sim):
+        plt.plot(sim.cost_lists)
 
 
 
