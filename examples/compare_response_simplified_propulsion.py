@@ -233,4 +233,8 @@ if __name__ == '__main__':
     results_run_1.plot(x='time [s]', y='fuel consumption [kg]', ax=ax_fuel, label='fuel cons 1')
     results_run_2.plot(x='time [s]', y='fuel consumption [kg]', ax=ax_fuel, label='fuel cons 2')
 
+    fig_speed, ax_speed = plt.subplots()
+    results_run_1.plot(x='time [s]', y='forward speed[m/s]', ax=ax_speed, label='speed 1')
+    results_run_2.plot(x='time [s]', y='forward speed[m/s]', ax=ax_speed, label='speed 2')
+
     plt.show()

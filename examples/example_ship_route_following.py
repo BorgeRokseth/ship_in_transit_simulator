@@ -128,8 +128,8 @@ map_ax.set_aspect('equal')
 
 
 # Example on plotting time series
-fuel_ifg, fuel_ax = plt.subplots()
-results.plot(x='time [s]', y='power [kw]', ax=fuel_ax)
+rudder_fig, rudder_ax = plt.subplots()
+results.plot(x='time [s]', y='rudder angle [deg]', ax=rudder_ax)
 
 
 plt.show()

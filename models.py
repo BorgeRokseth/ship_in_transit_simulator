@@ -258,8 +258,9 @@ class ShipModel:
         self.wind_speed = environment_config.wind_speed
 
         # Operational parameters used to calculate loading percent on each power source
-        self.p_rel_rated_hsg = 0.0
-        self.p_rel_rated_me = 0.0
+        self.p_rel_rated_hsg = 0
+        self.p_rel_rated_me = 0
+        self.rudder_angle = 0
 
         # Configure machinery system according to self.mso
         #self.mso_mode = simulation_config.machinery_system_operating_mode
@@ -642,6 +643,7 @@ class ShipModel:
 
         # Forces acting (replace zero vectors with suitable functions)
         f_rudder_v, f_rudder_r = self.rudder(rudder_angle)
+        self.rudder_angle = rudder_angle
 
         F_wind = self.get_wind_force()
         F_waves = np.array([0, 0, 0])
@@ -803,6 +805,7 @@ class ShipModel:
         self.simulation_results['fuel consumption [kg]'].append(cons)
         self.simulation_results['motor torque [Nm]'].append(self.main_engine_torque(load_perc))
         self.simulation_results['thrust force [kN]'].append(self.thrust() / 1000)
+        self.simulation_results['rudder angle [deg]'].append(self.rudder_angle * 180 / np.pi)
         self.fuel_me.append(cons_me)
         self.fuel_hsg.append(cons_hsg)
         self.fuel.append(cons)
@@ -957,6 +960,8 @@ class ShipModelSimplifiedPropulsion:
         self.a_dg = 180.71
         self.b_dg = -289.90
         self.c_dg = 324.90
+
+        self.rudder_angle = 0
 
         self.simulation_results = defaultdict(list)
 
@@ -1259,6 +1264,7 @@ class ShipModelSimplifiedPropulsion:
         # Forces acting (replace zero vectors with suitable functions)
         f_rudder_v, f_rudder_r = self.rudder(rudder_angle)
         self.update_thrust(load_perc)
+        self.rudder_angle = rudder_angle
 
         F_wind = self.get_wind_force()
         F_waves = np.array([0, 0, 0])
@@ -1391,6 +1397,7 @@ class ShipModelSimplifiedPropulsion:
         self.fuel_hsg.append(cons_hsg)
         self.fuel.append(cons)
         self.simulation_results['thrust force [kN]'].append(self.thrust / 1000)
+        self.simulation_results['rudder angle [deg]'].append(self.rudder_angle * 180 / np.pi)
 
 
 class ShipModelWithoutPropulsion:
