@@ -2939,9 +2939,9 @@ class SimulationPools:
             self.yaw_lists.extend(self.dsim.yaw_lists)
             self.yaw_angle_lists.extend(self.dsim.yaw_angle_lists)
             j += 1
+
 class PlotEverything:
     def plot_distance(self, sim, zone: Zones):
-
         for i in range(len(sim.n_lists)):
             plt.plot(sim.t_lists[i], sim.dis_lists[i])
         plt.axhline(y=zone.collimargin + zone.r, color='r', linestyle='-', label='Collision boundary')
@@ -2970,13 +2970,13 @@ class PlotEverything:
         for loc in sim.cpa_loc_list:
             plt.scatter(x=loc[0], y=loc[1])
 
-    def plot_position(self, sim):
+    def plot_icebergpos(self, sim):
         global posPlot
         for i in range(len(sim.n_lists)):
             posPlot = plt.plot(sim.n_lists[i], sim.e_lists[i])
         return posPlot
 
-    def plot_T_Z(self, zone: Zones, sim):
+    def plot_icebergpos_zones(self, zone: Zones, sim):
         circle0 = zone.plot_coll()
         circle1 = zone.plot_excl()
         circle2 = zone.plot_zone1()
@@ -2992,7 +2992,7 @@ class PlotEverything:
         axs.add_artist(circle4)
         plt.show()
 
-    def plot_Prob(self,sim:SimulationPools):
+    def plot_prob(self,sim:SimulationPools):
         figure, axs = plt.subplots(2, 3)
         figure.suptitle("Probability distribution of CPA")
         axs[0, 0].hist(sim.col_prob_list, range=(0, 1), bins=20)
@@ -3008,7 +3008,7 @@ class PlotEverything:
         axs[1, 2].hist(sim.outside_prob_list, range=(0, 1), bins=20)
         axs[1, 2].set_title("Outside watching zones")
 
-    def plot_Prob_2(self, sim: SimulationPools):
+    def plot_prob_2(self, sim: SimulationPools):
         plt.hist(sim.col_prob_list, color='red', label='collision')
         plt.hist(sim.exc_prob_list, color='orange', label='Exclusion zone')
         plt.hist(sim.zone1_prob_list, color='yellow', label='Zone 1')
