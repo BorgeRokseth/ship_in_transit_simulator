@@ -92,7 +92,8 @@ Examples on how to setup and use to simulator can
 be seen in the files under the "examples" folder. 
 
 # Contributors
-Børge Rokseth ([borge.rokseth@gmail.com](mailto:borge.rokseth@gmail.com))
+* Børge Rokseth ([borge.rokseth@gmail.com](mailto:borge.rokseth@gmail.com))
+* Tiantian Zhu ([tiantian.zhu@ntnu.no](mailto:tiantian.zhu@ntnu.no))
 
 # Licence
 This project is published under the [MIT](https://choosealicense.com/licenses/mit/) license.
