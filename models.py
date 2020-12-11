@@ -2269,8 +2269,11 @@ class IcebergDriftingModel1:
     def iceberg_mass_estimation(self):
         shape = self.iceberg_config.shape_of_iceberg
         size = self.iceberg_config.size_of_iceberg
-        if shape is "tabular":
+        if shape == "tabular":
             self.mass= self.l_iceberg*self.w_iceberg*self.iceberg_config.height_of_iceberg
+
+        return self.mass
+
 
 
     def set_added_mass(self, surge_coeff, sway_coeff, yaw_coeff):
@@ -2483,9 +2486,302 @@ class IcebergDriftingModel1:
 class DriftModel2:
     """This drift model is simpler than IcebergDriftingModel1,
     it calculates the drift velocity as an approximation of environment parameters"""
-    def __init__(self, env_config:EnvironmentConfiguration,
-                 iceberg_config=IcebergConfiguration,
+    def __init__(self, environment_config:EnvironmentConfiguration,
+                 iceberg_config:IcebergConfiguration,
                  simulation_config: DriftSimulationConfiguration):
+        """
+
+        :type iceberg_config: object
+        """
+        self.iceberg_config = iceberg_config
+        payload = 0.9 * iceberg_config.mass_tonnage
+        lsw = iceberg_config.mass_tonnage / iceberg_config.coefficient_of_deadweight_to_displacement \
+              - iceberg_config.mass_tonnage
+        self.mass = lsw + payload
+
+        self.l_iceberg = iceberg_config.waterlinelength_of_iceberg  # 80
+        self.w_iceberg = iceberg_config.width_of_iceberg  # 16.0
+        self.x_g = 0
+        self.i_z = self.mass * (self.l_iceberg ** 2 + self.w_iceberg ** 2) / 12
+
+        # zero-frequency added mass
+        self.x_du, self.y_dv, self.n_dr = self.set_added_mass(iceberg_config.added_mass_coefficient_in_surge,
+                                                              iceberg_config.added_mass_coefficient_in_sway,
+                                                              iceberg_config.added_mass_coefficient_in_yaw)
+
+        self.t_surge = iceberg_config.mass_over_linear_friction_coefficient_in_surge
+        self.t_sway = iceberg_config.mass_over_linear_friction_coefficient_in_sway
+        self.t_yaw = iceberg_config.mass_over_linear_friction_coefficient_in_yaw
+        self.ku = iceberg_config.nonlinear_friction_coefficient__in_surge  # 2400.0  # non-linear friction coeff in surge
+        self.kv = iceberg_config.nonlinear_friction_coefficient__in_sway  # 4000.0  # non-linear friction coeff in sway
+        self.kr = iceberg_config.nonlinear_friction_coefficient__in_yaw  # 400.0  # non-linear friction coeff in yaw
+
+        # Environmental conditions
+        self.vel_c = np.array([environment_config.current_velocity_component_from_north,
+                               environment_config.current_velocity_component_from_east,
+                               0.0])
+        self.wind_dir = environment_config.wind_direction
+        self.wind_speed = environment_config.wind_speed
+
+        # Initial states (can be altered using self.set_state_vector(x))
+        self.n = simulation_config.initial_north_position_m
+        self.e = simulation_config.initial_east_position_m
+        self.psi = simulation_config.initial_yaw_angle_rad
+        self.u = simulation_config.initial_forward_speed_m_per_s
+        self.v = simulation_config.initial_sideways_speed_m_per_s
+        self.r = simulation_config.initial_yaw_rate_rad_per_s
+        self.x = self.update_state_vector()
+        self.states = np.empty(6)
+
+        # Initial states (save as local values)
+        self.n_initial = simulation_config.initial_north_position_m
+        self.e_initial = simulation_config.initial_east_position_m
+        self.psi_initial = simulation_config.initial_yaw_angle_rad
+        self.u_initial = simulation_config.initial_forward_speed_m_per_s
+        self.v_initial = simulation_config.initial_sideways_speed_m_per_s
+        self.r_initial = simulation_config.initial_yaw_rate_rad_per_s
+
+        # Differentials
+        self.d_n = self.d_e = self.d_psi = 0
+        self.d_u = self.d_v = self.d_r = 0
+
+        # Set up integration
+        self.int = EulerInt()  # Instantiate the Euler integrator
+        self.int.set_dt(simulation_config.integration_step)
+        self.int.set_sim_time(simulation_config.simulation_time)
+
+        # Instantiate ship draw plotting
+        self.drw = IcebergDraw(iceberg_config)  # Instantiate the ship drawing class
+        self.iceberg_drawings = [[], []]  # Arrays for storing ship drawing data
+
+        # Wind effect on ship
+        self.rho_a = 1.2
+        self.h_f = 8.0  # mean height above water seen from the front
+        self.h_s = 8.0  # mean height above water seen from the side
+        self.proj_area_f = self.w_iceberg * self.h_f  # Projected are from the front
+        self.proj_area_l = self.l_iceberg * self.h_s  # Projected area from the side
+        self.cx = 0.5
+        self.cy = 0.7
+        self.cn = 0.08
+
+        self.simulation_results = defaultdict(list)
+
+    def iceberg_mass_estimation(self):
+        shape = self.iceberg_config.shape_of_iceberg
+        size = self.iceberg_config.size_of_iceberg
+        if shape == "tabular":
+            self.mass = self.l_iceberg * self.w_iceberg * self.iceberg_config.height_of_iceberg
+
+        return self.mass
+
+    def set_added_mass(self, surge_coeff, sway_coeff, yaw_coeff):
+        ''' Sets the added mass in surge due to surge motion, sway due
+            to sway motion and yaw due to yaw motion according to given coeffs.
+
+            args:
+                surge_coeff (float): Added mass coefficient in surge direction due to surge motion
+                sway_coeff (float): Added mass coefficient in sway direction due to sway motion
+                yaw_coeff (float): Added mass coefficient in yaw direction due to yaw motion
+            returns:
+                x_du (float): Added mass in surge
+                y_dv (float): Added mass in sway
+                n_dr (float): Added mass in yaw
+        '''
+        x_du = self.mass * surge_coeff
+        y_dv = self.mass * sway_coeff
+        n_dr = self.i_z * yaw_coeff
+        return x_du, y_dv, n_dr
+
+    def get_wind_force(self):
+        ''' This method calculates the forces due to the relative
+            wind speed, acting on teh ship in surge, sway and yaw
+            direction.
+
+            :return: Wind force acting in surge, sway and yaw
+        '''
+        uw = self.wind_speed * np.cos(self.wind_dir - self.psi)
+        vw = self.wind_speed * np.sin(self.wind_dir - self.psi)
+        u_rw = uw - self.u
+        v_rw = vw - self.v
+        gamma_rw = -np.arctan2(v_rw, u_rw)
+        wind_rw2 = u_rw ** 2 + v_rw ** 2
+        c_x = -self.cx * np.cos(gamma_rw)
+        c_y = self.cy * np.sin(gamma_rw)
+        c_n = self.cn * np.sin(2 * gamma_rw)
+        tau_coeff = 0.5 * self.rho_a * wind_rw2
+        tau_u = tau_coeff * c_x * self.proj_area_f
+        tau_v = tau_coeff * c_y * self.proj_area_l
+        tau_n = tau_coeff * c_n * self.proj_area_l * self.l_iceberg
+        return np.array([tau_u, tau_v, tau_n])
+
+    def update_state_vector(self):
+        ''' Update the state vector according to the individual state values
+        '''
+        return np.array([self.n, self.e, self.psi, self.u, self.v, self.r])
+
+    def set_north_pos(self, val):
+        ''' Set the north position of the iceberg and update the state vector
+        '''
+        self.n = val
+        self.x = self.update_state_vector()
+
+    def set_east_pos(self, val):
+        ''' Set the east position of the iceberg and update the state vector
+        '''
+        self.e = val
+        self.x = self.update_state_vector()
+
+    def set_yaw_angle(self, val):
+        ''' Set the yaw angle of the iceberg and update the state vector
+        '''
+        self.psi = val
+        self.x = self.update_state_vector()
+
+    def set_surge_speed(self, val):
+        ''' Set the surge speed of the iceberg and update the state vector
+        '''
+        self.u = val
+        self.x = self.update_state_vector()
+
+    def set_sway_speed(self, val):
+        ''' Set the sway speed of the iceberg and update the state vector
+        '''
+        self.v = val
+        self.x = self.update_state_vector()
+
+    def set_yaw_rate(self, val):
+        ''' Set the yaw rate of the iceberg and update the state vector
+        '''
+        self.r = val
+        self.x = self.update_state_vector()
+
+    def three_dof_kinematics(self):
+        ''' Updates the time differientials of the north position, east
+            position and yaw angle. Should be called in the simulation
+            loop before the integration step.
+        '''
+        vel = np.array([self.u, self.v, self.r])
+        dx = np.dot(self.rotation(), vel)
+        self.d_n = dx[0]
+        self.d_e = dx[1]
+        self.d_psi = dx[2]
+
+    def rotation(self):
+        ''' Specifies the rotation matrix for rotations about the z-axis, such that
+            "body-fixed coordinates" = rotation x "North-east-down-fixed coordinates" .
+        '''
+        return np.array([[np.cos(self.psi), -np.sin(self.psi), 0],
+                         [np.sin(self.psi), np.cos(self.psi), 0],
+                         [0, 0, 1]])
+
+    def three_dof_kinetics(self):
+        ''' Calculates accelerations of the iceberg, as a funciton
+            of wind forces and the states in the previous time-step.
+        '''
+        # System matrices (did not include added mass yet)
+        M_rb = np.array([[self.mass + self.x_du, 0, 0],
+                         [0, self.mass + self.y_dv, self.mass * self.x_g],
+                         [0, self.mass * self.x_g, self.i_z + self.n_dr]])
+        C_rb = np.array([[0, 0, -self.mass * (self.x_g * self.r + self.v)],
+                         [0, 0, self.mass * self.u],
+                         [self.mass * (self.x_g * self.r + self.v), -self.mass * self.u, 0]])
+
+        D = np.array([[self.mass / self.t_surge, 0, 0],
+                      [0, self.mass / self.t_sway, 0],
+                      [0, 0, self.i_z / self.t_yaw]])
+        D2 = np.array([[self.ku * self.u, 0, 0],
+                       [0, self.kv * self.v, 0],
+                       [0, 0, self.kr * self.r]])
+
+        F_wind = self.get_wind_force()
+        F_waves = np.array([0, 0, 0])
+
+        # assembling state vector
+        vel = np.array([self.u, self.v, self.r])
+
+        # Transforming current velocity to ship frame
+        v_c = np.dot(np.linalg.inv(self.rotation()), self.vel_c)
+        u_r = self.u - v_c[0]
+        v_r = self.v - v_c[1]
+
+        C_a = np.array([[0, 0, self.y_dv * v_r],
+                        [0, 0, -self.x_du * u_r],
+                        [-self.y_dv * v_r, self.x_du * u_r, 0]])
+
+        # Kinetic equation
+        M_inv = np.linalg.inv(M_rb)
+        dx = np.dot(M_inv, -np.dot(C_rb, vel) - -np.dot(C_a, vel - v_c) - np.dot(D + D2, vel - v_c)
+                    + F_wind)
+        self.d_u = dx[0]
+        self.d_v = dx[1]
+        self.d_r = dx[2]
+
+    def update_differentials(self):
+        ''' This method should be called in the simulation loop. It will
+            update the full differential equation of the ship.
+        '''
+        self.three_dof_kinematics()
+        self.three_dof_kinetics()
+
+    def integrate_differentials(self):
+        ''' Integrates the differential equation one time step ahead using
+            the euler intgration method with parameters set in the
+            int-instantiation of the "EulerInt"-class.
+        '''
+        self.set_north_pos(self.int.integrate(self.n, self.d_n))
+        self.set_east_pos(self.int.integrate(self.e, self.d_e))
+        self.set_yaw_angle(self.int.integrate(self.psi, self.d_psi))
+        self.set_surge_speed(self.int.integrate(self.u, self.d_u))
+        self.set_sway_speed(self.int.integrate(self.v, self.d_v))
+        self.set_yaw_rate(self.int.integrate(self.r, self.d_r))
+
+    def store_states(self):
+        ''' Appends the current value of each state to an array. This
+            is convenient when plotting. The method should be called within
+            the simulation loop each time step. Then afterwars, an array
+            containing for ecample the north-position for each time step
+            is obtained as ...states[0]
+        '''
+        self.states[0].append(self.n)
+        self.states[1].append(self.e)
+        self.states[2].append(self.psi)
+        self.states[3].append(self.u)
+        self.states[4].append(self.v)
+        self.states[5].append(self.r)
+
+    def iceberg_snap_shot(self):
+        ''' This method is used to store a map-view snap shot of
+            the ship at the given north-east position and heading.
+            It uses the ShipDraw-class. To plot a map view of the
+            n-th ship snap-shot, use:
+
+            plot(ship_drawings[1][n], ship_drawings[0][n])
+        '''
+        x, y = self.drw.local_coords()
+        x_ned, y_ned = self.drw.rotate_coords(x, y, self.psi)
+        x_ned_trans, y_ned_trans = self.drw.translate_coords(x_ned, y_ned, self.n, self.e)
+        self.iceberg_drawings[0].append(x_ned_trans)
+        self.iceberg_drawings[1].append(y_ned_trans)
+
+    def store_simulation_data(self):
+        self.simulation_results['time [s]'].append(self.int.time)
+        self.simulation_results['north position [m]'].append(self.n)
+        self.simulation_results['east position [m]'].append(self.e)
+        self.simulation_results['yaw angle [deg]'].append(self.t_yaw * 180 / np.pi)
+        self.simulation_results['forward speed [m/s]'].append(self.u)
+        self.simulation_results['sideways speed [m/s]'].append(self.v)
+        self.simulation_results['yaw rate [deg/sec]'].append(self.r * 180 / np.pi)
+        self.simulation_results['wind speed [m/sec]'].append(self.wind_speed)
+        self.simulation_results['wind direction [radius]'].append(self.wind_dir)
+
+    def restore_to_intial(self):
+        self.n = self.n_initial
+        self.e = self.e_initial
+        self.psi = self.psi_initial
+        self.u = self.u_initial
+        self.v = self.v_initial
+        self.r = self.r_initial
+
 
 
 class DistanceSimulation:
