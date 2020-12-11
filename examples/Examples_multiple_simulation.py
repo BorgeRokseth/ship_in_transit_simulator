@@ -14,6 +14,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import random
 import numpy as np
+from scipy.stats import entropy
+from math import log, e
 
 iceberg_config = IcebergConfiguration(
     shape_of_iceberg="tabular",
@@ -37,7 +39,7 @@ iceberg_config = IcebergConfiguration(
 env_config = EnvironmentConfiguration(
     current_velocity_component_from_north=3,
     current_velocity_component_from_east=2,
-    wind_direction=40,
+    wind_direction=39,
     wind_speed=15,
 )
 
@@ -70,8 +72,8 @@ z_config = ZonesConfiguration(
     zone3_radius=10000,
 )
 simulation_config = DriftSimulationConfiguration(
-    initial_north_position_m=-50000,
-    initial_east_position_m=-20000,
+    initial_north_position_m=-40000,
+    initial_east_position_m=-15000,
     initial_yaw_angle_rad=0,
     initial_forward_speed_m_per_s=0.5,
     initial_sideways_speed_m_per_s=0.2,
@@ -84,7 +86,7 @@ iceberg = IcebergDriftingModel1(iceberg_config=iceberg_config,
                                 environment_config=env_config,
                                 simulation_config=simulation_config
                                 )
-dsim = DistanceSimulation(10, iceberg_config=iceberg_config,
+dsim = DistanceSimulation(20, iceberg_config=iceberg_config,
                           simulation_config=simulation_config,
                           environment_config=env_config,
                           z_config=z_config
@@ -110,8 +112,52 @@ pool_sim = SimulationPools(10, dsim=dsim, cost=cost_calculation)
 
 plotall = PlotEverything()
 pool_sim.pool_sim()
+labels = pool_sim.cpa_d_list
 
-plotall.plot_icebergpos_zones(zone=zone, sim=pool_sim)
+def entropy1(labels, base=None):
+  value,counts = np.unique(labels, return_counts=True)
+  return entropy(counts, base=base)
 
-plt.show()
+def entropy2(labels, base=None):
+  """ Computes entropy of label distribution. """
+  n_labels = len(labels)
+
+  if n_labels <= 1:
+    return 0
+
+  value,counts = np.unique(labels, return_counts=True)
+  probs = counts / n_labels
+  n_classes = np.count_nonzero(probs)
+
+  if n_classes <= 1:
+    return 0
+
+  ent = 0.
+
+  # Compute entropy
+  base = e if base is None else base
+  for i in probs:
+    ent -= i * log(i, base)
+
+  return ent
+
+def entropy3(labels, base=None):
+  vc = pd.Series(labels).value_counts(normalize=True, sort=False)
+  base = e if base is None else base
+  return -(vc * np.log(vc)/np.log(base)).sum()
+
+def entropy4(labels, base=None):
+  value,counts = np.unique(labels, return_counts=True)
+  norm_counts = counts / counts.sum()
+  base = e if base is None else base
+  return -(norm_counts * np.log(norm_counts)/np.log(base)).sum()
+
+
+print(entropy1(labels))
+print(entropy2(labels))
+print(entropy3(labels))
+print(entropy4(labels))
+#plotall.plot_icebergpos_zones(zone=zone, sim=pool_sim)
+
+#plt.show()
 

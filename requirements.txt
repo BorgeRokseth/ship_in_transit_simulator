@@ -10,3 +10,4 @@ python-dateutil==2.8.1
 pytz==2020.4
 six==1.15.0
 typing==3.7.4.3
+scipy

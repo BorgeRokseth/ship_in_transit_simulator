@@ -11,6 +11,8 @@ from collections import defaultdict
 from matplotlib.patches import Circle
 from typing import NamedTuple, List
 import random
+from scipy.stats import entropy
+from math import log, e
 
 
 class ShipConfiguration(NamedTuple):
@@ -3074,12 +3076,47 @@ class PlotEverything:
         plt.ylabel('No. of pools')
         plt.title('Distribution of collision occurrence in each simulation pool')
 
+class DriftModel2:
+    """This drift model is simpler than IcebergDriftingModel1,
+    it calculates the drift velocity as an approximation of environment parameters"""
 
 
 
+class EntropyCalculation:
+    def entropy1(labels, base=None):
+        value, counts = np.unique(labels, return_counts=True)
+        return entropy(counts, base=base)
 
+    def entropy2(labels, base=None):
+        """ Computes entropy of label distribution. """
+        n_labels = len(labels)
 
+        if n_labels <= 1:
+            return 0
 
+        value, counts = np.unique(labels, return_counts=True)
+        probs = counts / n_labels
+        n_classes = np.count_nonzero(probs)
 
+        if n_classes <= 1:
+            return 0
 
+        ent = 0.
 
+        # Compute entropy
+        base = e if base is None else base
+        for i in probs:
+            ent -= i * log(i, base)
+
+        return ent
+
+    def entropy3(labels, base=None):
+        vc = pd.Series(labels).value_counts(normalize=True, sort=False)
+        base = e if base is None else base
+        return -(vc * np.log(vc) / np.log(base)).sum()
+
+    def entropy4(labels, base=None):
+        value, counts = np.unique(labels, return_counts=True)
+        norm_counts = counts / counts.sum()
+        base = e if base is None else base
+        return -(norm_counts * np.log(norm_counts) / np.log(base)).sum()
