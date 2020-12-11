@@ -2952,7 +2952,6 @@ class PlotEverything:
         plt.legend()
         plt.ylabel('Distance between iceberg and structure [m]')
         plt.xlabel('Time [s]')
-        plt.show()
 
     def plot_cpa_loc(self, sim, zone: Zones):
         circle0 = zone.plot_coll()
@@ -2969,7 +2968,6 @@ class PlotEverything:
         axs.add_artist(circle2)
         axs.add_artist(circle3)
         axs.add_artist(circle4)
-        plt.show()
 
     def plot_icebergpos(self, sim):
         global posPlot
