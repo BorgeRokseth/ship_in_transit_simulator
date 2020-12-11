@@ -92,8 +92,8 @@ dsim = DistanceSimulation(10, iceberg_config=iceberg_config,
 
 ice_cost_config = IceCost(
     disconnect_cost=10,
-    light_col_cost=2,
-    medium_col_cost=30,
+    light_col_cost=5,
+    medium_col_cost=300,
     severe_col_cost=1000,
     towing_cost=1,
     disconnect_time_cost=3600,  # unit is second, equal to 60 minutes.
@@ -124,15 +124,15 @@ pool_sim.pool_sim()
 #pool_sim.plotposition()
 #axs2 = plotall.plotT_Z(zone=zone, sim=pool_sim)
 #pool_sim.plotdistance()
-plotall.plot_distance(zone=zone, sim=pool_sim)
-plt.show()
-plotall.plot_T_Z(zone=zone, sim=pool_sim)
-plt.show()
-plotall.plot_Prob_2(sim=pool_sim)
-plotall.plot_cost(sim=pool_sim)
-plt.show
+#plotall.plot_distance(zone=zone, sim=pool_sim)
+#plt.show()
+plotall.plot_icebergpos_zones(zone=zone, sim=pool_sim)
+#plt.show()
+#plotall.plot_Prob_2(sim=pool_sim)
+#plotall.plot_cost(sim=pool_sim)
+
 #zone.plot_zone3()
-#pool_sim.plotcpaloc()
+pool_sim.plot_cpa_loc(zone=zone, sim=pool_sim)
 #circle0 = zone.plot_coll()
 #circle1 = zone.plot_excl()
 #circle2 = zone.plot_zone1()

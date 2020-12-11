@@ -2952,7 +2952,7 @@ class PlotEverything:
         plt.legend()
         plt.ylabel('Distance between iceberg and structure [m]')
         plt.xlabel('Time [s]')
-
+        plt.show()
 
     def plot_cpa_loc(self, sim, zone: Zones):
         circle0 = zone.plot_coll()
@@ -2961,14 +2961,15 @@ class PlotEverything:
         circle3 = zone.plot_zone2()
         circle4 = zone.plot_zone3()
         figure, axs = plt.subplots()
+        for loc in sim.cpa_loc_list:
+            plt.scatter(x=loc[0], y=loc[1])
         axs.set_aspect('equal')
         axs.add_artist(circle0)
         axs.add_artist(circle1)
         axs.add_artist(circle2)
         axs.add_artist(circle3)
         axs.add_artist(circle4)
-        for loc in sim.cpa_loc_list:
-            plt.scatter(x=loc[0], y=loc[1])
+        plt.show()
 
     def plot_icebergpos(self, sim):
         global posPlot
@@ -2983,14 +2984,15 @@ class PlotEverything:
         circle3 = zone.plot_zone2()
         circle4 = zone.plot_zone3()
         figure, axs = plt.subplots()
-        self.plot_position(sim)
+        figure.suptitle("Probability distribution of CPA")
+        self.plot_icebergpos(sim)
         axs.set_aspect('equal')
         axs.add_artist(circle0)
         axs.add_artist(circle1)
         axs.add_artist(circle2)
         axs.add_artist(circle3)
         axs.add_artist(circle4)
-        plt.show()
+        figure.suptitle('Iceberg position')
 
     def plot_prob(self,sim:SimulationPools):
         figure, axs = plt.subplots(2, 3)
@@ -3017,19 +3019,66 @@ class PlotEverything:
         plt.hist(sim.outside_prob_list, color='grey', label='Outside zones')
         plt.legend()
         plt.xlabel('Probability distribution of CPA location')
-        plt.show()
+
 
     def plot_cpazone(self, sim):
         plt.hist(sim.cpa_zone_list)
+        plt.xlabel('Zone of CPA')
+        plt.title('Distribution of CPA zone')
 
     def plot_cpad(self, sim):
         plt.hist(sim.cpa_d_list)
+        plt.title('Distribution of distance between iceberg center and ship center when the iceberg reaches CPA')
 
     def plot_cpat(self, sim):
         plt.hist(sim.cpa_time_list)
+        plt.title('Distribution of time when the iceberg reaches CPA')
 
     def plot_cost(self, sim):
-        plt.plot(sim.cost_lists)
+        plt.subplot(1, 2, 1)
+        plt.plot(np.array(sim.cost_lists)[:, 0], label='towing operation')
+        plt.plot(np.array(sim.cost_lists)[:, 1], label='disconnecting')
+        plt.plot(np.array(sim.cost_lists)[:, 2], label='do not move')
+        plt.legend()
+        plt.ylabel('Cost')
+        plt.xlabel('Iteration')
+        plt.title('Cost of different operations')
+        plt.subplot(1, 2, 2)
+        plt.hist(np.array(sim.cost_lists)[:, 0], label='towing operation')
+        plt.hist(np.array(sim.cost_lists)[:, 1], label='disconnecting')
+        plt.hist(np.array(sim.cost_lists)[:, 2], label='do not move')
+        plt.legend()
+        plt.ylabel('No of iterations')
+        plt.xlabel('Cost')
+        plt.title('Cost distribution of different operations')
+
+
+    def plot_col_con(self, sim):
+        plt.hist(sim.col_con_list)
+        plt.ylabel('No.')
+        plt.xlabel('Collision types')
+        plt.title('Distribution of collision types')
+
+
+    def plot_ki_level(self, sim):
+        plt.hist(sim.ki_level_list)
+        plt.xlabel('Kinetic energy level when iceberg is at CPA')
+        plt.ylabel('No.')
+        plt.title('Distribution of Kinetic energy level')
+    def plot_col_occur(self, sim):
+        plt.hist(sim.col_occur_list)
+        plt.xlabel('Collision occur or not')
+        plt.ylabel('No.')
+        plt.title('Distribution of collision occurrence')
+    def plot_col_no(self, sim):
+        plt.hist(sim.col_no_list)
+        plt.xlabel('No. of collision in each pool of simulation')
+        plt.ylabel('No. of pools')
+        plt.title('Distribution of collision occurrence in each simulation pool')
+
+
+
+
 
 
 
