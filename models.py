@@ -7,6 +7,8 @@ import math
 import matplotlib.pyplot as plt
 import pandas as pd
 from collections import defaultdict
+
+from matplotlib.patches import Circle
 from typing import NamedTuple, List
 import random
 
@@ -2095,14 +2097,14 @@ class Zones:
             map-view.
         '''
         # ax = plt.gca()
-        return plt.Circle((self.e, self.n), radius=self.r0 + self.collimargin, fill=False, color='red')
+        return plt.Circle((self.e, self.n), radius=self.r0 + self.collimargin, fill=False, color='orange')
 
     def plot_zone1(self):
         ''' This method can be used to plot the obstacle in a
             map-view.
         '''
         # ax = plt.gca()
-        return plt.Circle((self.e, self.n), radius=self.r1 + self.collimargin, fill=False, color='orange')
+        return plt.Circle((self.e, self.n), radius=self.r1 + self.collimargin, fill=False, color='yellow')
 
     def plot_zone2(self):
         ''' This method can be used to plot the obstacle in a
@@ -2116,7 +2118,8 @@ class Zones:
             map-view.
         '''
         # ax = plt.gca()
-        return plt.Circle((self.e, self.n), radius=self.r3 + self.collimargin, fill=False, color='green')
+        circle3: Circle = plt.Circle((self.e, self.n), radius=self.r3 + self.collimargin, fill=False, color='green')
+        return circle3
 
 
 class IcebergDraw:
@@ -2491,22 +2494,23 @@ class DistanceSimulation:
         self.round_results = defaultdict(list)
         # specify the number of simulation
         self.n = round
-        self.dis_lists = np.empty(self.n, dtype=object)
-        self.t_lists = np.empty(self.n, dtype=object)
-        self.d_n_lists = np.empty(self.n, dtype=object)
-        self.d_e_lists = np.empty(self.n, dtype=object)
-        self.d_exc_lists = np.empty(self.n, dtype=object)
-        self.d_zone1_lists = np.empty(self.n, dtype=object)
-        self.d_zone2_lists = np.empty(self.n, dtype=object)
-        self.d_zone3_lists = np.empty(self.n, dtype=object)
-        self.n_lists = np.empty(self.n, dtype=object)
-        self.e_lists = np.empty(self.n, dtype=object)
-        self.windS_lists = np.empty(self.n, dtype=object)
-        self.windD_lists = np.empty(self.n, dtype=object)
-        self.u_lists = np.empty(self.n, dtype=object)
-        self.v_lists = np.empty(self.n, dtype=object)
-        self.yaw_lists = np.empty(self.n, dtype=object)
-        self.yaw_angle_lists = np.empty(self.n, dtype=object)
+        # variables for saving data
+        self.dis_lists = []
+        self.t_lists = []
+        self.d_n_lists = []
+        self.d_e_lists = []
+        self.d_exc_lists = []
+        self.d_zone1_lists = []
+        self.d_zone2_lists = []
+        self.d_zone3_lists = []
+        self.n_lists = []
+        self.e_lists = []
+        self.windS_lists = []
+        self.windD_lists = []
+        self.u_lists = []
+        self.v_lists = []
+        self.yaw_lists = []
+        self.yaw_angle_lists = []
 
     def simulation(self):
         max_wind_speed = 25
@@ -2516,7 +2520,7 @@ class DistanceSimulation:
         self.iceberg.int.time = 0
         continue_simulation = True
         while self.iceberg.int.time <= self.iceberg.int.sim_time and continue_simulation:
-            #self.iceberg.wind_speed = random.random() * max_wind_speed
+            self.iceberg.wind_speed = random.random() * max_wind_speed
             self.iceberg.update_differentials()
             self.iceberg.integrate_differentials()
             self.iceberg.store_simulation_data()
@@ -2707,49 +2711,50 @@ class DistanceSimulation:
             self.round_results['forward speed when the iceberg approach the structure'].append(self.cpa_point[4])
             self.round_results['sideways speed when the iceberg approach the structure'].append(self.cpa_point[5])
 
-            self.t_lists[n - 1] = self.distance_results['Time [s]']
-            self.dis_lists[n - 1] = self.distance_results['Distance between iceberg and structure [m]']
-            self.d_n_lists[n - 1] = self.distance_results[
-                'Distance between iceberg and structure in north direction [m]']
-            self.d_e_lists[n - 1] = self.distance_results[
-                'Distance between iceberg and structure in east direction [m]']
-            self.d_exc_lists[n - 1] = self.distance_results['Distance to exclusion zone']
-            self.d_zone1_lists[n - 1] = self.distance_results['Distance to zone 1']
-            self.d_zone2_lists[n - 1] = self.distance_results['Distance to zone 2']
-            self.d_zone3_lists[n - 1] = self.distance_results['Distance to zone 3']
-            self.n_lists[n - 1] = self.iceberg.simulation_results['north position [m]']
-            self.e_lists[n - 1] = self.iceberg.simulation_results['east position [m]']
-            self.windS_lists[n - 1] = self.iceberg.simulation_results['wind speed [m/sec]']
-            self.windD_lists[n - 1] = self.iceberg.simulation_results['wind direction [radius]']
-            self.u_lists[n - 1] = self.iceberg.simulation_results['forward speed [m/s]']
-            self.v_lists[n - 1] = self.iceberg.simulation_results['sideways speed [m/s]']
-            self.yaw_lists[n - 1] = self.iceberg.simulation_results['yaw rate [deg/sec]']
-            self.yaw_angle_lists[n - 1] = self.iceberg.simulation_results['yaw angle [deg]']
+            self.t_lists.append(self.distance_results['Time [s]'])
+            self.dis_lists.append(self.distance_results['Distance between iceberg and structure [m]'])
+            self.d_n_lists.append(self.distance_results[
+                'Distance between iceberg and structure in north direction [m]'])
+            self.d_e_lists.append(self.distance_results[
+                'Distance between iceberg and structure in east direction [m]'])
+            self.d_exc_lists.append(self.distance_results['Distance to exclusion zone'])
+            self.d_zone1_lists.append(self.distance_results['Distance to zone 1'])
+            self.d_zone2_lists.append(self.distance_results['Distance to zone 2'])
+            self.d_zone3_lists.append(self.distance_results['Distance to zone 3'])
+            self.n_lists.append(self.iceberg.simulation_results['north position [m]'])
+            self.e_lists.append(self.iceberg.simulation_results['east position [m]'])
+            self.windS_lists.append(self.iceberg.simulation_results['wind speed [m/sec]'])
+            self.windD_lists.append(self.iceberg.simulation_results['wind direction [radius]'])
+            self.u_lists.append(self.iceberg.simulation_results['forward speed [m/s]'])
+            self.v_lists.append(self.iceberg.simulation_results['sideways speed [m/s]'])
+            self.yaw_lists.append(self.iceberg.simulation_results['yaw rate [deg/sec]'])
+            self.yaw_angle_lists.append(self.iceberg.simulation_results['yaw angle [deg]'])
             n += 1
 
     def col_pro(self):
-        prob = self.round_results['location of the closest point of approach (cpa)'].count(-1) / self.n
+        prob = self.round_results['zone of closest point of approach (cpa)'].count(-1) / self.n
         return prob
 
     def exc_pro(self):
-        prob = self.round_results['location of the closest point of approach (cpa)'].count(0) / self.n
+        prob = self.round_results['zone of closest point of approach (cpa)'].count(0) / self.n
         return prob
 
     def zone1_pro(self):
-        prob = self.round_results['location of the closest point of approach (cpa)'].count(1) / self.n
+        prob = self.round_results['zone of closest point of approach (cpa)'].count(1) / self.n
         return prob
 
     def zone2_pro(self):
-        prob = self.round_results['location of the closest point of approach (cpa)'].count(2) / self.n
+        prob = self.round_results['zone of closest point of approach (cpa)'].count(2) / self.n
         return prob
 
     def zone3_pro(self):
-        prob = self.round_results['location of the closest point of approach (cpa)'].count(3) / self.n
+        prob = self.round_results['zone of closest point of approach (cpa)'].count(3) / self.n
         return prob
 
     def outside_pro(self):
-        prob = 1 - self.round_results['location of the closest point of approach (cpa)'].count(4) / self.n
+        prob = self.round_results['zone of closest point of approach (cpa)'].count(4) / self.n
         return prob
+
 
 
 class Cost:
@@ -2760,6 +2765,14 @@ class Cost:
         self.disconnect_s_prob = 0.98
         self.icecost = ice_cost_config
         self.env = env_config
+        self.mean_cost_single = np.zeros(3)
+        self.col_no = 0
+        self.average_cost = np.zeros(3)
+        self.ki_level = "Collision can be ignored"
+        self.ki_level_list = []
+        self.col_occur = []
+        self.col_con_list = []
+        self.col_con = "No Collision"
 
     def col_kinetics(self, col_velocity_2):
         kinetics = 0.5 * self.dsim.iceberg.mass * col_velocity_2
@@ -2767,14 +2780,13 @@ class Cost:
 
     def col_type(self, col_velocity_2):
         if self.col_kinetics(col_velocity_2) >= self.icecost.Ki_lowerbound_severe:
-            col_type = "Severe Collision"
+            self.ki_level = "Can lead to severe collision"
         elif self.col_kinetics(col_velocity_2) >= self.icecost.Ki_lowerbound_medium:
-            col_type = "Medium Collision"
+            self.ki_level = "Can lead to medium collision"
         elif self.col_kinetics(col_velocity_2) >= self.icecost.Ki_lowerbound_light:
-            col_type = "Light Collision"
+            self.ki_level = "Can lead to light collision"
         else:
-            col_type = "Collision can be ignored"
-        return col_type
+            self.ki_level = "Collision can be ignored"
 
     def update_tow_success(self, tcpa):
         if tcpa < self.icecost.towing_time_cost:
@@ -2783,37 +2795,244 @@ class Cost:
             self.tow_s_prob = 0.8
 
     def cost_cal(self, col_event, col_velocity_2):
-        col_type = self.col_type(col_velocity_2)
-        if col_type == "Light Collision":
-            col_cost = self.icecost.light_col_cost
-        elif col_type == "Medium Collision":
-            col_cost = self.icecost.medium_col_cost
-        elif col_type == "Severe Collision":
-            col_cost = self.icecost.severe_col_cost
+        self.col_type(col_velocity_2)
+        if col_event == 1:
+            if self.ki_level == "Can lead to light collision":
+                col_cost = self.icecost.light_col_cost
+                self.col_con = "Light Collision"
+            elif self.ki_level == "Can lead to medium collision":
+                col_cost = self.icecost.medium_col_cost
+                self.col_con = "Medium Collision"
+            elif self.ki_level == "Can lead to severe collision":
+                col_cost = self.icecost.severe_col_cost
+                self.col_con = "Severe Collision"
+            else:
+                self.con_con = "Ignorable Collision"
+                col_cost = 0
         else:
+            self.col_con= "No Collision"
             col_cost = 0
         col_pro = col_event * np.array([1 - self.tow_s_prob, 1 - self.disconnect_s_prob, 1])
         operation_cost = np.array([self.icecost.towing_cost, self.icecost.disconnect_cost, 0])
-        mean_cost = col_pro * col_cost + operation_cost
-        return mean_cost
+        self.mean_cost_single = col_pro * col_cost + operation_cost
 
     def cost_msim(self):
         n = self.dsim.n
         m = 1
         total_cost = np.zeros(3)
-        col_times = 0
+        self.col_occur.clear()
+        self.col_con_list.clear()
+        self.ki_level_list.clear()
+        self.col_no = 0
         while m <= n:
             idx = m - 1
             col_event = self.dsim.round_results['zone of closest point of approach (cpa)'][idx]
             col_event = self.dsim.round_results['breach event'][idx][0]
+
             tcpa = self.dsim.round_results['time when iceberg reaches the closest point of approach (cpa)'][idx]
             col_velocity_2 = self.dsim.round_results['forward speed when the iceberg approach the structure'][
                                  idx] ** 2 + \
                              self.dsim.round_results['sideways speed when the iceberg approach the structure'][idx] ** 2
             self.update_tow_success(tcpa)
-            cost_single = self.cost_cal(col_event, col_velocity_2)
-            total_cost += cost_single
-            col_times += col_event
+            self.cost_cal(col_event, col_velocity_2)
+            total_cost += self.mean_cost_single
+            self.col_no += col_event
+            self.col_occur.append(col_event)
+            self.ki_level_list.append(self.ki_level)
+            self.col_con_list.append(self.col_con)
             m += 1
-        average_cost = total_cost / n
-        return col_times, average_cost
+        self.average_cost = total_cost / n
+
+class SimulationPools:
+    """This class is to conduct groups of simulations, to obtain a probability distribution of operation cost, collision probability, etc."""
+    def __init__(self, poolNo, dsim: DistanceSimulation, cost: Cost):
+        self.poolNo = poolNo
+        self.dsim = dsim
+        self.cost = cost
+        self.cost_lists = []
+        self.col_prob_list = []
+        self.exc_prob_list = []
+        self.zone1_prob_list = []
+        self.zone2_prob_list = []
+        self.zone3_prob_list = []
+        self.outside_prob_list = []
+        self.col_no_list = []
+
+
+        self.ki_level_list = []
+        self.col_type_list = []
+        self.cpa_time_list = []
+        self.cpa_loc_list = []
+        self.cpa_zone_list = []
+        self.cpa_d_list = []
+        self.col_con_list = []
+        self.col_occur_list = []
+
+        # variables for saving data
+        self.dis_lists = []
+        self.t_lists = []
+        self.d_n_lists = []
+        self.d_e_lists = []
+        self.d_exc_lists = []
+        self.d_zone1_lists = []
+        self.d_zone2_lists = []
+        self.d_zone3_lists = []
+        self.n_lists = []
+        self.e_lists = []
+        self.windS_lists = []
+        self.windD_lists = []
+        self.u_lists = []
+        self.v_lists = []
+        self.yaw_lists = []
+        self.yaw_angle_lists = []
+
+
+    def pool_sim(self):
+        j= 1
+        self.cost_lists.clear()
+        self.col_prob_list.clear()
+        self.exc_prob_list.clear()
+        self.zone1_prob_list.clear()
+        self.zone2_prob_list.clear()
+        self.zone3_prob_list.clear()
+        self.outside_prob_list.clear()
+        self.col_no_list.clear()
+        while j <= self.poolNo:
+            self.dsim.multsim()
+            self.dsim.cpa()
+            self.cost.cost_msim()
+            col_prob = self.dsim.col_pro()
+            exc_prob = self.dsim.exc_pro()
+            self.cost_lists.append(self.cost.average_cost)
+            self.col_prob_list.append(self.dsim.col_pro())
+            self.exc_prob_list.append(self.dsim.exc_pro())
+            self.zone1_prob_list.append(self.dsim.zone1_pro())
+            self.zone2_prob_list.append(self.dsim.zone2_pro())
+            self.zone3_prob_list.append(self.dsim.zone3_pro())
+            self.outside_prob_list.append(self.dsim.outside_pro())
+            self.col_no_list.append(self.cost.col_no)
+
+            self.col_con_list.extend(self.cost.col_con_list)
+            self.col_occur_list.extend(self.cost.col_occur)
+            self.ki_level_list.extend(self.cost.ki_level_list)
+
+            #self.col_type_list.append(self.cost.col_type)
+            self.cpa_time_list.extend(self.dsim.round_results['time when iceberg reaches the closest point of approach (cpa)'])
+            self.cpa_loc_list.extend(self.dsim.round_results['location of the closest point of approach (cpa)'])
+            self.cpa_zone_list.extend(self.dsim.round_results['zone of closest point of approach (cpa)'])
+            self.cpa_d_list.extend(self.dsim.round_results['distance between the closest point of approach (cpa) and the structure'])
+
+            self.dis_lists.extend(self.dsim.dis_lists)
+            self.t_lists.extend(self.dsim.t_lists)
+            self.d_n_lists.extend(self.dsim.d_n_lists)
+            self.d_e_lists.extend(self.dsim.d_e_lists)
+            self.d_exc_lists.extend(self.dsim.d_exc_lists)
+            self.d_zone1_lists.extend(self.dsim.d_zone1_lists)
+            self.d_zone2_lists.extend(self.dsim.d_zone2_lists)
+            self.d_zone3_lists.extend(self.dsim.d_zone3_lists)
+            self.n_lists.extend(self.dsim.n_lists)
+            self.e_lists.extend(self.dsim.e_lists)
+            self.windS_lists.extend(self.dsim.windS_lists)
+            self.windD_lists.extend(self.dsim.windD_lists)
+            self.u_lists.extend(self.dsim.u_lists)
+            self.v_lists.extend(self.dsim.v_lists)
+            self.yaw_lists.extend(self.dsim.yaw_lists)
+            self.yaw_angle_lists.extend(self.dsim.yaw_angle_lists)
+            j += 1
+class PlotEverything:
+    def plot_distance(self, sim, zone: Zones):
+
+        for i in range(len(sim.n_lists)):
+            plt.plot(sim.t_lists[i], sim.dis_lists[i])
+        plt.axhline(y=zone.collimargin + zone.r, color='r', linestyle='-', label='Collision boundary')
+        plt.axhline(y=zone.collimargin + zone.r0, color='orange', linestyle='-', label='Exclusion zone boundary')
+        plt.axhline(y=zone.collimargin + zone.r1, color='yellow', linestyle='-', label='Zone 1 boundary')
+        plt.axhline(y=zone.collimargin + zone.r2, color='blue', linestyle='-', label='Zone 2 boundary')
+        plt.axhline(y=zone.collimargin + zone.r3, color='green', linestyle='-', label='Zone 3 boundary')
+        plt.legend()
+        plt.ylabel('Distance between iceberg and structure [m]')
+        plt.xlabel('Time [s]')
+
+
+    def plot_cpa_loc(self, sim, zone: Zones):
+        circle0 = zone.plot_coll()
+        circle1 = zone.plot_excl()
+        circle2 = zone.plot_zone1()
+        circle3 = zone.plot_zone2()
+        circle4 = zone.plot_zone3()
+        figure, axs = plt.subplots()
+        axs.set_aspect('equal')
+        axs.add_artist(circle0)
+        axs.add_artist(circle1)
+        axs.add_artist(circle2)
+        axs.add_artist(circle3)
+        axs.add_artist(circle4)
+        for loc in sim.cpa_loc_list:
+            plt.scatter(x=loc[0], y=loc[1])
+
+    def plot_position(self, sim):
+        global posPlot
+        for i in range(len(sim.n_lists)):
+            posPlot = plt.plot(sim.n_lists[i], sim.e_lists[i])
+        return posPlot
+
+    def plot_T_Z(self, zone: Zones, sim):
+        circle0 = zone.plot_coll()
+        circle1 = zone.plot_excl()
+        circle2 = zone.plot_zone1()
+        circle3 = zone.plot_zone2()
+        circle4 = zone.plot_zone3()
+        figure, axs = plt.subplots()
+        self.plot_position(sim)
+        axs.set_aspect('equal')
+        axs.add_artist(circle0)
+        axs.add_artist(circle1)
+        axs.add_artist(circle2)
+        axs.add_artist(circle3)
+        axs.add_artist(circle4)
+        plt.show()
+
+    def plot_Prob(self,sim:SimulationPools):
+        figure, axs = plt.subplots(2, 3)
+        figure.suptitle("Probability distribution of CPA")
+        axs[0, 0].hist(sim.col_prob_list, range=(0, 1), bins=20)
+        axs[0, 0].set_title("Collision zone")
+        axs[0, 1].hist(sim.exc_prob_list, range=(0, 1), bins=20)
+        axs[0, 1].set_title("Exclusion zone")
+        axs[0, 2].hist(sim.zone1_prob_list, range=(0, 1), bins=20)
+        axs[0, 2].set_title("Zone 1")
+        axs[1, 0].hist(sim.zone2_prob_list, range=(0, 1), bins=20)
+        axs[1, 0].set_title("Zone 2")
+        axs[1, 1].hist(sim.zone3_prob_list, range=(0, 1), bins=20)
+        axs[1, 1].set_title("Zone 3")
+        axs[1, 2].hist(sim.outside_prob_list, range=(0, 1), bins=20)
+        axs[1, 2].set_title("Outside watching zones")
+
+    def plot_Prob_2(self, sim: SimulationPools):
+        plt.hist(sim.col_prob_list, color='red', label='collision')
+        plt.hist(sim.exc_prob_list, color='orange', label='Exclusion zone')
+        plt.hist(sim.zone1_prob_list, color='yellow', label='Zone 1')
+        plt.hist(sim.zone2_prob_list, color='blue', label='Zone 2')
+        plt.hist(sim.zone3_prob_list, color='green', label='Zone 3')
+        plt.hist(sim.outside_prob_list, color='grey', label='Outside zones')
+        plt.legend()
+        plt.xlabel('Probability distribution of CPA location')
+        plt.show()
+
+    def plot_cpazone(self, sim):
+        plt.hist(sim.cpa_zone_list)
+
+    def plot_cpad(self, sim):
+        plt.hist(sim.cpa_d_list)
+
+    def plot_cpat(self, sim):
+        plt.hist(sim.cpa_time_list)
+
+    def plot_cost(self, sim):
+        plt.plot(sim.cost_lists)
+
+
+
+
+
+

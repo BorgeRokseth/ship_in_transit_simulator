@@ -2,7 +2,8 @@ from models import IcebergDriftingModel1, \
     DriftSimulationConfiguration, \
     EnvironmentConfiguration, \
     IcebergConfiguration,\
-    Zones
+    Zones,\
+    ZonesConfiguration
 import pandas as pd
 import matplotlib.pyplot as plt
 import random
@@ -33,7 +34,7 @@ env_config = EnvironmentConfiguration(
     wind_speed=15,
 )
 
-zones_config = Zones(
+zones_config = ZonesConfiguration(
     n_pos=0,
     e_pos=0,
     object_radius=100,
@@ -42,7 +43,6 @@ zones_config = Zones(
     zone1_radius=2000,
     zone2_radius=5000,
     zone3_radius=10000,
-    iceberg_config=iceberg_config
 )
 simulation_config = DriftSimulationConfiguration(
     initial_north_position_m=-50000,
@@ -59,7 +59,7 @@ iceberg = IcebergDriftingModel1(iceberg_config=iceberg_config,
                                   environment_config=env_config,
                                   simulation_config=simulation_config
                                   )
-
+zone = Zones(z_config=zones_config, iceberg_config=iceberg_config)
 continue_simulation = True
 max_wind_speed = 25
 countcol = 0
@@ -72,17 +72,17 @@ while iceberg.int.time <= iceberg.int.sim_time and continue_simulation:
 
     iceberg.update_differentials()
     iceberg.integrate_differentials()
-    countcol = zones_config.colli_event(iceberg.n,iceberg.e)
+    countcol = zone.colli_event(iceberg.n,iceberg.e)
 
     iceberg.store_simulation_data()
 
     if countcol==1:
         continue_simulation = False
         print('Collision occur at: ', iceberg.int.time, 's')
-        print("Closest point to Structure:",zones_config.distance(iceberg.n,iceberg.e), 'm')
+        print("Closest point to Structure:",zone.distance(iceberg.n,iceberg.e), 'm')
         countcol = 1
 
-    elif iceberg.n >zones_config.r3+zones_config.n :
+    elif iceberg.n >zone.r3+zone.n :
         continue_simulation = False
         print('Iceberg passed away the structure and Simulation stopped at: ', iceberg.int.time)
         countcol = 0
@@ -90,15 +90,15 @@ while iceberg.int.time <= iceberg.int.sim_time and continue_simulation:
     iceberg.int.next_time()
 
 results = pd.DataFrame().from_dict(iceberg.simulation_results)
-circle0 = zones_config.plot_coll()
-circle1 = zones_config.plot_excl()
-circle2 = zones_config.plot_zone1()
-circle3 = zones_config.plot_zone2()
-circle4 = zones_config.plot_zone3()
+circle0 = zone.plot_coll()
+circle1 = zone.plot_excl()
+circle2 = zone.plot_zone1()
+circle3 = zone.plot_zone2()
+circle4 = zone.plot_zone3()
 
 fig, axs = plt.subplots(3)
-plt.xlim(-100000+zones_config.e, 100000+zones_config.e)
-plt.ylim(-100000+zones_config.n, 100000+zones_config.n)
+plt.xlim(-100000+zone.e, 100000+zone.e)
+plt.ylim(-100000+zone.n, 100000+zone.n)
 results.plot(x='east position [m]', y='north position [m]', ax=axs[0])
 axs[0].set_aspect('equal')
 axs[0].add_artist(circle0)
@@ -106,8 +106,8 @@ axs[0].add_artist(circle1)
 axs[0].add_artist(circle2)
 axs[0].add_artist(circle3)
 axs[0].add_artist(circle4)
-axs[0].set_xlim(-100000+zones_config.e, 100000+zones_config.e)
-axs[0].set_ylim(-100000+zones_config.n, 100000+zones_config.n)
+axs[0].set_xlim(-100000+zone.e, 100000+zone.e)
+axs[0].set_ylim(-100000+zone.n, 100000+zone.n)
 results.plot(x='time [s]', y='wind speed [m/sec]', ax=axs[1])
 results.plot(x='time [s]', y='wind direction [radius]', ax=axs[2])
 

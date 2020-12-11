@@ -7,7 +7,9 @@ from models import IcebergDriftingModel1, \
     ShipConfiguration, \
     DistanceSimulation, \
     Cost, \
-    IceCost
+    IceCost,\
+    SimulationPools,\
+    PlotEverything
 import pandas as pd
 import matplotlib.pyplot as plt
 import random
@@ -75,7 +77,7 @@ simulation_config = DriftSimulationConfiguration(
     initial_sideways_speed_m_per_s=0.2,
     initial_yaw_rate_rad_per_s=0,
     simulation_time=100000,
-    integration_step=10.0
+    integration_step=30.0
 )
 
 iceberg = IcebergDriftingModel1(iceberg_config=iceberg_config,
@@ -98,18 +100,68 @@ ice_cost_config = IceCost(
     towing_time_cost=14400,  # unit is second, equal to 4 hours.
     Ki_lowerbound_severe=50000000,
     Ki_lowerbound_medium=20000000,
-    Ki_lowerbound_light=10000000,
+    Ki_lowerbound_light=5000000,
 )
 cost_calculation = Cost(multi_simulation=dsim,
                         ice_cost_config=ice_cost_config,
                         env_config=env_config)
-dsim.multsim()
-print(cost_calculation.cost_msim())
+zone = Zones(z_config=z_config, iceberg_config=iceberg_config)
+pool_sim = SimulationPools(10, dsim=dsim, cost=cost_calculation)
+
+plotall = PlotEverything()
+#dsim.multsim()
+#print(dsim.col_pro())
+#print(dsim.exc_pro())
+#print(dsim.zone1_pro())
+#plotall.plotdistance(sim=pool_sim)
+pool_sim.pool_sim()
+#plotall.plotProb(sim=pool_sim)
+#plt.show()
+#figure, axs = plt.subplots()
+#axs1 = plotall.plotcpat(sim=pool_sim)
+#dsim.multsim()
+#plotall.plotdistance(sim=dsim)
+#pool_sim.plotposition()
+#axs2 = plotall.plotT_Z(zone=zone, sim=pool_sim)
+#pool_sim.plotdistance()
+plotall.plot_distance(zone=zone, sim=pool_sim)
+plt.show()
+plotall.plot_T_Z(zone=zone, sim=pool_sim)
+plt.show()
+plotall.plot_Prob_2(sim=pool_sim)
+plotall.plot_cost(sim=pool_sim)
+plt.show
+#zone.plot_zone3()
+#pool_sim.plotcpaloc()
+#circle0 = zone.plot_coll()
+#circle1 = zone.plot_excl()
+#circle2 = zone.plot_zone1()
+#circle3 = zone.plot_zone2()
+#circle4 = zone.plot_zone3()
+
+#figure, axs = plt.subplots()
+#plt.xlim(-100000+zone.e, 100000+zone.e)
+#plt.ylim(-100000+zone.n, 100000+zone.n)
+#pool_sim.plotposition()
+#axs.set_aspect('equal')
+#axs.add_artist(circle0)
+#axs.add_artist(circle1)
+#axs.add_artist(circle2)
+#axs.add_artist(circle3)
+#axs.add_artist(circle4)
+#axs.add_artist(position)
+#plt.show()
+#plt.hist(pool_sim.col_prob_list)
+#plt.hist(pool_sim.exc_prob_list)
+#plt.hist(pool_sim.zone1_prob_list)
+
+#dsim.multsim()
+#print(cost_calculation.cost_msim())
 
 # print(dsim.round_results)
-for dis in dsim.d_zone1_lists:
-    distancePlot = plt.plot(dis)
-plt.show()
+#for dis in dsim.d_zone1_lists:
+#    distancePlot = plt.plot(dis)
+#plt.show()
 #cpa_zonePlot = plt.hist(dsim.round_results['zone of closest point of approach (cpa)'])
 #plt.show()
 
