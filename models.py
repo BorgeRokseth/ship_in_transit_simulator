@@ -909,7 +909,7 @@ class ShipModelSimplifiedPropulsion:
         self.d_u = self.d_v = self.d_r = 0
 
         # Set up ship control systems
-        self.initialize_ship_speed_controller(kp=7, ki=0.13)
+        self.initialize_ship_speed_controller(kp=0.1, ki=0.01)
         self.initialize_ship_heading_controller(kp=4, kd=90, ki=0.005)
         self.initialize_heading_filter(kp=0.5, kd=10, t=5000)
 
@@ -1180,11 +1180,7 @@ class ShipModelSimplifiedPropulsion:
             shaft speed. The load percentage is the fraction of the produced
             power over the total power capacity in the current configuration.
         '''
-        ref_shaft_speed = self.ship_speed_controller.pi_ctrl(speed_ref, self.u, self.int.dt, -550, 550)
-        ref_shaft_speed = ControllerLib.sat(ref_shaft_speed, 0, self.shaft_speed_max)
-        load_perc = self.shaft_speed_controller.pi_ctrl(ref_shaft_speed, self.omega, self.int.dt)
-        load_perc = ControllerLib.sat(load_perc, 0, 1.1)
-        return load_perc
+        return max(min(self.ship_speed_controller.pi_ctrl(speed_ref, self.u, self.int.dt, -10, 10), 1.1), -1.1)
 
     def rudderang_from_headingref(self, heading_ref):
         ''' This method finds a suitable rudder angle for the ship to
@@ -1398,6 +1394,7 @@ class ShipModelSimplifiedPropulsion:
         self.fuel.append(cons)
         self.simulation_results['thrust force [kN]'].append(self.thrust / 1000)
         self.simulation_results['rudder angle [deg]'].append(self.rudder_angle * 180 / np.pi)
+        self.simulation_results['speed controller integrator'].append(self.ship_speed_controller.error_i)
 
 
 class ShipModelWithoutPropulsion:

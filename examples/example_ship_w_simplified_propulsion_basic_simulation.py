@@ -69,7 +69,6 @@ machinery_config = SimplifiedPropulsionMachinerySystemConfiguration(
     max_rudder_angle_degrees=30,
     rudder_angle_to_yaw_force_coefficient=500e3,
     rudder_angle_to_sway_force_coefficient=50e3,
-    thrust_force_dynamic_damping=0.5,
     thrust_force_dynamic_time_constant=30
 )
 
@@ -78,13 +77,13 @@ simulation_setup = SimplifiedPropulsionSimulationConfiguration(
     initial_north_position_m=0,
     initial_east_position_m=0,
     initial_yaw_angle_rad=10 * np.pi / 180,
-    initial_forward_speed_m_per_s=7,
+    initial_forward_speed_m_per_s=0,
     initial_sideways_speed_m_per_s=0,
     initial_yaw_rate_rad_per_s=0,
     initial_thrust_force=0,
     machinery_system_operating_mode=1,
     integration_step=0.5,
-    simulation_time=300
+    simulation_time=500
 )
 
 ship_model = ShipModelSimplifiedPropulsion(ship_config=ship_config,
@@ -93,15 +92,16 @@ ship_model = ShipModelSimplifiedPropulsion(ship_config=ship_config,
                        simulation_config=simulation_setup)
 
 desired_heading_radians = 45 * np.pi / 180
+desired_forward_speed_meters_per_second = 7
 time_since_last_ship_drawing = 30
 
 while ship_model.int.time < ship_model.int.sim_time:
     # Find appropriate rudder angle and engine throttle
     rudder_angle = -ship_model.rudderang_from_headingref(desired_heading_radians)
-    if ship_model.int.time < 20:
+    if ship_model.int.time < 100:
         engine_load = 0
     else:
-        engine_load = 1
+        engine_load = ship_model.loadperc_from_speedref(desired_forward_speed_meters_per_second)
 
     # Update and integrate differential equations for current time step
     ship_model.store_simulation_data(engine_load)
@@ -136,4 +136,8 @@ results.plot(x='time [s]', y='forward speed[m/s]', ax=speed_ax)
 force_response_fig, (power_ax, force_response_ax) = plt.subplots(2,1)
 results.plot(x='time [s]', y='power me [kw]', ax=power_ax)
 results.plot(x='time [s]', y='thrust force [kN]', ax=force_response_ax)
+
+load_fig, (load_ax, int_ax) = plt.subplots(2,1)
+results.plot(x="time [s]", y='commanded load fraction me [-]', ax=load_ax)
+results.plot(x="time [s]", y='speed controller integrator', ax=int_ax)
 plt.show()
