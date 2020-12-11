@@ -2189,7 +2189,12 @@ class IcebergDriftingModel1:
     def __init__(self, iceberg_config: IcebergConfiguration,
                  environment_config: EnvironmentConfiguration,
                  simulation_config: DriftSimulationConfiguration):
-        payload = 0.9 * (iceberg_config.mass_tonnage)
+        """
+
+        :type iceberg_config: object
+        """
+        self.iceberg_config = iceberg_config
+        payload = 0.9 * iceberg_config.mass_tonnage
         lsw = iceberg_config.mass_tonnage / iceberg_config.coefficient_of_deadweight_to_displacement \
               - iceberg_config.mass_tonnage
         self.mass = lsw + payload
@@ -2260,6 +2265,13 @@ class IcebergDriftingModel1:
         self.cn = 0.08
 
         self.simulation_results = defaultdict(list)
+
+    def iceberg_mass_estimation(self):
+        shape = self.iceberg_config.shape_of_iceberg
+        size = self.iceberg_config.size_of_iceberg
+        if shape is "tabular":
+            self.mass= self.l_iceberg*self.w_iceberg*self.iceberg_config.height_of_iceberg
+
 
     def set_added_mass(self, surge_coeff, sway_coeff, yaw_coeff):
         ''' Sets the added mass in surge due to surge motion, sway due
@@ -2468,6 +2480,12 @@ class IcebergDriftingModel1:
         self.u = self.u_initial
         self.v = self.v_initial
         self.r = self.r_initial
+class DriftModel2:
+    """This drift model is simpler than IcebergDriftingModel1,
+    it calculates the drift velocity as an approximation of environment parameters"""
+    def __init__(self, env_config:EnvironmentConfiguration,
+                 iceberg_config=IcebergConfiguration,
+                 simulation_config: DriftSimulationConfiguration):
 
 
 class DistanceSimulation:
@@ -3075,11 +3093,6 @@ class PlotEverything:
         plt.xlabel('No. of collision in each pool of simulation')
         plt.ylabel('No. of pools')
         plt.title('Distribution of collision occurrence in each simulation pool')
-
-class DriftModel2:
-    """This drift model is simpler than IcebergDriftingModel1,
-    it calculates the drift velocity as an approximation of environment parameters"""
-
 
 
 class EntropyCalculation:
