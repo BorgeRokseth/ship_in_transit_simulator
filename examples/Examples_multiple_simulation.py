@@ -74,8 +74,8 @@ z_config = ZonesConfiguration(
     zone3_radius=10000,
 )
 simulation_config = DriftSimulationConfiguration(
-    initial_north_position_m=-40000,
-    initial_east_position_m=-17000,
+    initial_north_position_m=-20000,
+    initial_east_position_m=-8500,
     initial_yaw_angle_rad=0,
     initial_forward_speed_m_per_s=0.5,
     initial_sideways_speed_m_per_s=0.2,
@@ -88,7 +88,7 @@ iceberg = IcebergDriftingModel1(iceberg_config=iceberg_config,
                                 environment_config=env_config,
                                 simulation_config=simulation_config
                                 )
-dsim = DistanceSimulation(20, iceberg_config=iceberg_config,
+dsim = DistanceSimulation(40, iceberg_config=iceberg_config,
                           simulation_config=simulation_config,
                           environment_config=env_config,
                           z_config=z_config
@@ -111,17 +111,46 @@ cost_calculation = Cost(multi_simulation=dsim,
                         env_config=env_config)
 zone = Zones(z_config=z_config, iceberg_config=iceberg_config)
 pool_sim = SimulationPools(10, dsim=dsim, cost=cost_calculation)
-
+datafit = DataFit()
 plotall = PlotEverything()
 pool_sim.pool_sim()
 
-labels = pool_sim.cpa_d_list
-DataFit.get_best_distribution(data=labels)
-best_dis = DataFit.get_best_distribution(data=labels)[0]
-params = DataFit.get_best_distribution(data=labels)[2]
-DataFit.get_entropy(dist=best_dis, parameters=params)
-print(st.entropy(pool_sim.cpa_d_list))
+data = np.asarray(pool_sim.cpa_d_list)
+#DataFit.get_best_distribution(data=labels)
+#best_dis = DataFit.get_best_distribution(data=labels)[0]
+#params = DataFit.get_best_distribution(data=labels)[2]
+#print(DataFit.get_entropy(dist_name=best_dis, parameters=params))
+#print(st.entropy(pool_sim.cpa_d_list))
 plotall.plot_icebergpos_zones(zone=zone, sim=pool_sim)
+print(data.mean())
+print(data.var())
+datafit.data_fit_comparision(data=data)
+#plt.show()
+#ax=plt.hist(data, bins=50, density=True, label='Data')
+# Find best fit distribution
+#best_fit_name, best_fit_params = DataFit.best_fit_distribution(data, 50, ax=None)
+#best_dist = getattr(st, best_fit_name)
 
-plt.show()
+# Update plots
+#ax.set_ylim(dataYLim)
+#ax.set_title(u'El Niño sea temp.\n All Fitted Distributions')
+#ax.set_xlabel(u'Temp (°C)')
+#ax.set_ylabel('Frequency')
+
+# Make PDF with best params
+#pdf = DataFit.make_pdf(best_dist, best_fit_params)
+#print(DataFit.get_entropy(best_dist, best_fit_params))
+# Display
+#plt.figure(figsize=(12, 8))
+#plt.hist(data, bins=50, density=True, label='Data')
+#plt.legend()
+#ax = pdf.plot(lw=2, label='PDF', legend=True)
+#param_names = (best_dist.shapes + ', loc, scale').split(', ') if best_dist.shapes else ['loc', 'scale']
+#param_str = ', '.join(['{}={:0.2f}'.format(k, v) for k, v in zip(param_names, best_fit_params)])
+#dist_str = '{}({})'.format(best_fit_name, param_str)
+#ax.set_title('CPA with best fit distribution \n' + dist_str)
+#ax.set_xlabel('CPA')
+#ax.set_ylabel('Probability Density')
+
+#plt.show()
 

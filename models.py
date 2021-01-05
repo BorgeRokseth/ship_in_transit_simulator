@@ -1,7 +1,7 @@
 """ This module provides classes that that can be used to setup and
     run simulation models of a ship in transit.
 """
-
+import matplotlib
 import numpy as np
 import math
 import matplotlib.pyplot as plt
@@ -13,7 +13,8 @@ from typing import NamedTuple, List
 import random
 from scipy.stats import entropy
 import scipy.stats as st
-
+import statsmodels as sm
+import warnings
 from math import log, e
 
 
@@ -3452,33 +3453,106 @@ class EntropyCalculation:
 class DataFit:
     """Fit the calculated data into a distribution. and obtain the distribution name and its parameters."""
 
-    def get_best_distribution(data):
-        dist_names = ["norm", "exponweib", "weibull_max", "weibull_min", "pareto", "genextreme"]
-        dist_results = []
-        params = {}
-        for dist_name in dist_names:
-            dist = getattr(st, dist_name)
-            param = dist.fit(data)
+    # Create models from data
+    def best_fit_distribution(data, bins=200, ax=None):
+        """Model data by finding best fit distribution to data"""
+        # Get histogram of original data
+        y, x = np.histogram(data, bins=bins, density=True)
+        x = (x + np.roll(x, -1))[:-1] / 2.0
 
-            params[dist_name] = param
-            # Applying the Kolmogorov-Smirnov test
-            D, p = st.kstest(data, dist_name, args=param)
-            print("p value for " + dist_name + " = " + str(p))
-            dist_results.append((dist_name, p))
+        # Distributions to check
+        DISTRIBUTIONS = [
+            st.beta, st.cauchy, st.chi, st.genextreme, st.gausshyper, st.gamma, st.norm, st.pearson3, st.uniform, st.weibull_min]
 
-        # select the best fitted distribution
-        best_dist, best_p = (max(dist_results, key=lambda item: item[1]))
-        # store the name of the best fit and its p value
+        # Best holders
+        best_distribution = st.norm
+        best_params = (0.0, 1.0)
+        best_sse = np.inf
 
-        print("Best fitting distribution: " + str(best_dist))
-        print("Best p value: " + str(best_p))
-        print("Parameters for the best fit: " + str(params[best_dist]))
+        # Estimate distribution parameters from data
+        for distribution in DISTRIBUTIONS:
 
-        return best_dist, best_p, params[best_dist]
+            # Try to fit the distribution
+            try:
+                # Ignore warnings from data that can't be fit
+                with warnings.catch_warnings():
+                    warnings.filterwarnings('ignore')
 
-    def get_entropy(self, dist, parameters):
-        rv = st.dist
+                    # fit dist to data
+                    params = distribution.fit(data)
+
+                    # Separate parts of parameters
+                    arg = params[:-2]
+                    loc = params[-2]
+                    scale = params[-1]
+
+                    # Calculate fitted PDF and error with fit in distribution
+                    pdf = distribution.pdf(x, loc=loc, scale=scale, *arg)
+                    sse = np.sum(np.power(y - pdf, 2.0))
+
+                    # if axis pass in add to plot
+                    try:
+                        if ax:
+                            pd.Series(pdf, x).plot(ax=ax)
+                        end
+                    except Exception:
+                        pass
+
+                    # identify if this distribution is better
+                    if best_sse > sse > 0:
+                        best_distribution = distribution
+                        best_params = params
+                        best_sse = sse
+
+            except Exception:
+                pass
+
+        return (best_distribution.name, best_params)
+
+    def make_pdf(dist, params, size=10000):
+        """Generate distributions's Probability Distribution Function """
+
+        # Separate parts of parameters
+        arg = params[:-2]
+        loc = params[-2]
+        scale = params[-1]
+
+        # Get sane start and end points of distribution
+        start = dist.ppf(0.001, *arg, loc=loc, scale=scale) if arg else dist.ppf(0.001, loc=loc, scale=scale)
+        end = dist.ppf(0.999, *arg, loc=loc, scale=scale) if arg else dist.ppf(0.999, loc=loc, scale=scale)
+
+        # Build PDF and turn into pandas Series
+        x = np.linspace(start, end, size)
+        y = dist.pdf(x, loc=loc, scale=scale, *arg)
+        pdf = pd.Series(y, x)
+
+        return pdf
+
+    def get_entropy(dist, params):
+        arg = params[:-2]
+        loc = params[-2]
+        scale = params[-1]
+        ent = dist.entropy(*arg, loc=loc, scale=scale) if arg else dist.ppf(0.001, loc=loc, scale=scale)
+
         #rv.entropy(parameters[0]. parameters[1], parameters[2])
-        return rv.entropy(parameters[0]. parameters[1], parameters[2])
+        return ent
 
+    def data_fit_comparision(self, data):
+        best_fit_name, best_fit_params = self.best_fit_distribution(data, 50, ax=None)
+        best_dist = getattr(st, best_fit_name)
+        pdf = self.make_pdf(best_dist, best_fit_params)
+        print(self.get_entropy(best_dist, best_fit_params))
+        # Display
+        plt.figure(figsize=(12, 8))
+        plt.hist(data, bins=50, density=True, label='Data')
+        plt.legend()
+        ax1 = pdf.plot(lw=2, label='PDF', legend=True)
+        param_names = (best_dist.shapes + ', loc, scale').split(', ') if best_dist.shapes else ['loc', 'scale']
+        param_str = ', '.join(['{}={:0.2f}'.format(k, v) for k, v in zip(param_names, best_fit_params)])
+        dist_str = '{}({})'.format(best_fit_name, param_str)
+        ax1.set_title('CPA with best fit distribution \n' + dist_str)
+        ax1.set_xlabel('CPA')
+        ax1.set_ylabel('Probability Density')
+
+        plt.show()
 
