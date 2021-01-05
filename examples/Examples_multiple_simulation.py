@@ -10,12 +10,13 @@ from models import IcebergDriftingModel1, \
     IceCost,\
     SimulationPools,\
     PlotEverything,\
-    EntropyCalculation
+    EntropyCalculation,\
+    DataFit
 import pandas as pd
 import matplotlib.pyplot as plt
 import random
 import numpy as np
-from scipy.stats import entropy
+import scipy.stats as st
 from math import log, e
 
 iceberg_config = IcebergConfiguration(
@@ -113,10 +114,14 @@ pool_sim = SimulationPools(10, dsim=dsim, cost=cost_calculation)
 
 plotall = PlotEverything()
 pool_sim.pool_sim()
-labels = pool_sim.cpa_d_list
 
-print(entropy(pool_sim.cpa_d_list))
+labels = pool_sim.cpa_d_list
+DataFit.get_best_distribution(data=labels)
+best_dis = DataFit.get_best_distribution(data=labels)[0]
+params = DataFit.get_best_distribution(data=labels)[2]
+DataFit.get_entropy(dist=best_dis, parameters=params)
+print(st.entropy(pool_sim.cpa_d_list))
 plotall.plot_icebergpos_zones(zone=zone, sim=pool_sim)
 
-#plt.show()
+plt.show()
 

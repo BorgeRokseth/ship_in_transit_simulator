@@ -72,7 +72,7 @@ while iceberg.int.time <= iceberg.int.sim_time and continue_simulation:
 
     iceberg.update_differentials()
     iceberg.integrate_differentials()
-    countcol = zone.colli_event(iceberg.n,iceberg.e)
+    countcol = zone.colli_event(iceberg.n, iceberg.e)
 
     iceberg.store_simulation_data()
 
@@ -82,7 +82,7 @@ while iceberg.int.time <= iceberg.int.sim_time and continue_simulation:
         print("Closest point to Structure:",zone.distance(iceberg.n,iceberg.e), 'm')
         countcol = 1
 
-    elif iceberg.n >zone.r3+zone.n :
+    elif iceberg.n >zone.r3+zone.n:
         continue_simulation = False
         print('Iceberg passed away the structure and Simulation stopped at: ', iceberg.int.time)
         countcol = 0
