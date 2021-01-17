@@ -5,6 +5,8 @@ import pandas as pd
 import scipy.stats as st
 import matplotlib.pyplot as plt
 import timeit
+import sys
+import math
 
 def entropy1(labels, base=None):
   value,counts = np.unique(labels, return_counts=True)
@@ -64,10 +66,10 @@ DISTRIBUTIONS = [
   st.uniform, st.vonmises, st.vonmises_line, st.wald, st.weibull_min, st.weibull_max, st.wrapcauchy
 ]
 rv = st.norm(100, 2)
-c1 =1.79
-c2= 3
-x1= np.linspace(st.weibull_min.ppf(0.01,c1), st.weibull_min.ppf(0.99,c1),100)
-x2= np.linspace(st.weibull_min.ppf(0.01,c2), st.weibull_min.ppf(0.99,c2),100)
+c1 = 1.79
+c2 = 3
+x1 = np.linspace(st.weibull_min.ppf(0.01, c1), st.weibull_min.ppf(0.99, c1), 100)
+x2 = np.linspace(st.weibull_min.ppf(0.01, c2), st.weibull_min.ppf(0.99, c2), 100)
 print(st.weibull_min.mean(c1, loc=0, scale=1))
 print(st.weibull_min.var(c1, loc=0, scale=1))
 
@@ -79,3 +81,38 @@ plt.plot(x1, st.weibull_min.pdf(x1, c1))
 plt.plot(x2, st.weibull_min.pdf(x2, c2))
 plt.show()
 print(rv.entropy())
+
+pos1 = (0, 0)
+pos2 = (5000, 0)
+r1 = 6000
+r2 = 2000
+def intersecting_area(pos1, pos2, r1, r2):
+  """pos1, pos2 are the positions of circle 1 and 2, r1, r2 are the radius."""
+  d = (((pos1[0]-pos2[0])**2)+((pos1[1]-pos2[1])**2))**0.5
+  small_circle_area = math.pi*(min(r1, r2)**2)
+  if d <= (max(r1, r2)-min(r1, r2)):
+    area = small_circle_area
+    print('Intersecting area will be area of smaller circle')
+
+  elif d >= (r1+r2):
+    area = 0
+    print('No intersecting area')
+  else:
+    angle1 = ((r1 * r1) + (d * d) - (r2 * r2)) / (2 * r1 * d)
+    angle2 = ((r2 * r2) + (d * d) - (r1 * r1)) / (2 * r2 * d)
+    theta1 = (math.acos(angle1) * 2)
+    theta2 = (math.acos(angle2) * 2)
+    area1 = (0.5 * theta1 * (r1 * r1)) - (0.5 * d * r2 * math.sin(theta2))
+    area2 = (0.5 * theta2 * (r2 * r2)) - (0.5 * d * r1 * math.sin(theta1))
+    area = area1 + area2
+  return area
+
+p = intersecting_area(pos1, pos2, r1, r2)/(math.pi*(r1**2))
+print(p)
+print(math.pi*(r2**2))
+print(intersecting_area(pos1, pos2, r1, r2))
+print(math.pi*(r1**2))
+
+
+
+

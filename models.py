@@ -3555,4 +3555,3 @@ class DataFit:
         ax1.set_ylabel('Probability Density')
 
         plt.show()
-
