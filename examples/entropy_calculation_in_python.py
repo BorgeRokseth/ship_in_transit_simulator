@@ -82,33 +82,40 @@ plt.plot(x2, st.weibull_min.pdf(x2, c2))
 plt.show()
 print(rv.entropy())
 
-pos1 = (0, 0)
-pos2 = (5000, 0)
-r1 = 6000
-r2 = 2000
-def intersecting_area(pos1, pos2, r1, r2):
-  """pos1, pos2 are the positions of circle 1 and 2, r1, r2 are the radius."""
-  d = (((pos1[0]-pos2[0])**2)+((pos1[1]-pos2[1])**2))**0.5
-  small_circle_area = math.pi*(min(r1, r2)**2)
-  if d <= (max(r1, r2)-min(r1, r2)):
-    area = small_circle_area
-    print('Intersecting area will be area of smaller circle')
+P=[]
+for i in range(10):
+  pos1 = (36*i, 72*i)
+  pos2 = (2400, 0)
+  r1 = 2500+i*50
+  r2 = 500
+  def intersecting_area(pos1, pos2, r1, r2):
+    """pos1, pos2 are the positions of circle 1 and 2, r1, r2 are the radius."""
+    d = (((pos1[0]-pos2[0])**2)+((pos1[1]-pos2[1])**2))**0.5
+    small_circle_area = math.pi*(min(r1, r2)**2)
+    if d <= (max(r1, r2)-min(r1, r2)):
+      area = small_circle_area
+      print('Intersecting area will be area of smaller circle')
 
-  elif d >= (r1+r2):
-    area = 0
-    print('No intersecting area')
-  else:
-    angle1 = ((r1 * r1) + (d * d) - (r2 * r2)) / (2 * r1 * d)
-    angle2 = ((r2 * r2) + (d * d) - (r1 * r1)) / (2 * r2 * d)
-    theta1 = (math.acos(angle1) * 2)
-    theta2 = (math.acos(angle2) * 2)
-    area1 = (0.5 * theta1 * (r1 * r1)) - (0.5 * d * r2 * math.sin(theta2))
-    area2 = (0.5 * theta2 * (r2 * r2)) - (0.5 * d * r1 * math.sin(theta1))
-    area = area1 + area2
-  return area
+    elif d >= (r1+r2):
+      area = 0
+      print('No intersecting area')
+    else:
+      angle1 = ((r1 * r1) + (d * d) - (r2 * r2)) / (2 * r1 * d)
+      angle2 = ((r2 * r2) + (d * d) - (r1 * r1)) / (2 * r2 * d)
+      theta1 = (math.acos(angle1) * 2)
+      theta2 = (math.acos(angle2) * 2)
+      area1 = (0.5 * theta1 * (r1 * r1)) - (0.5 * d * r2 * math.sin(theta2))
+      area2 = (0.5 * theta2 * (r2 * r2)) - (0.5 * d * r1 * math.sin(theta1))
+      area = area1 + area2
+    return area
 
-p = intersecting_area(pos1, pos2, r1, r2)/(math.pi*(r1**2))
+  p = intersecting_area(pos1, pos2, r1, r2)/(math.pi*(r1**2))
+  P.append(p)
+  print(i)
+total_p = 1-(1-P[0])*(1-P[1])*(1-P[2])*(1-P[3])*(1-P[4])*(1-P[5])*(1-P[6])*(1-P[7])*(1-P[8])*(1-P[9])
 print(p)
+print(P)
+print(total_p)
 print(math.pi*(r2**2))
 print(intersecting_area(pos1, pos2, r1, r2))
 print(math.pi*(r1**2))
