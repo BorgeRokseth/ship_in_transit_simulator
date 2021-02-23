@@ -2270,11 +2270,9 @@ class IcebergDriftingModel1:
         shape = self.iceberg_config.shape_of_iceberg
         size = self.iceberg_config.size_of_iceberg
         if shape == "tabular":
-            self.mass= self.l_iceberg*self.w_iceberg*self.iceberg_config.height_of_iceberg
+            self.mass = self.l_iceberg * self.w_iceberg * self.iceberg_config.height_of_iceberg
 
         return self.mass
-
-
 
     def set_added_mass(self, surge_coeff, sway_coeff, yaw_coeff):
         ''' Sets the added mass in surge due to surge motion, sway due
@@ -2483,11 +2481,14 @@ class IcebergDriftingModel1:
         self.u = self.u_initial
         self.v = self.v_initial
         self.r = self.r_initial
+
+
 class DriftModel2:
     """This drift model is simpler than IcebergDriftingModel1,
     it calculates the drift velocity as an approximation of environment parameters"""
-    def __init__(self, environment_config:EnvironmentConfiguration,
-                 iceberg_config:IcebergConfiguration,
+
+    def __init__(self, environment_config: EnvironmentConfiguration,
+                 iceberg_config: IcebergConfiguration,
                  simulation_config: DriftSimulationConfiguration):
         """
 
@@ -2783,7 +2784,6 @@ class DriftModel2:
         self.r = self.r_initial
 
 
-
 class DistanceSimulation:
     """his class is for simulate drift multiple times to get a distribution of
     collision event and
@@ -3030,9 +3030,9 @@ class DistanceSimulation:
             self.t_lists.append(self.distance_results['Time [s]'])
             self.dis_lists.append(self.distance_results['Distance between iceberg and structure [m]'])
             self.d_n_lists.append(self.distance_results[
-                'Distance between iceberg and structure in north direction [m]'])
+                                      'Distance between iceberg and structure in north direction [m]'])
             self.d_e_lists.append(self.distance_results[
-                'Distance between iceberg and structure in east direction [m]'])
+                                      'Distance between iceberg and structure in east direction [m]'])
             self.d_exc_lists.append(self.distance_results['Distance to exclusion zone'])
             self.d_zone1_lists.append(self.distance_results['Distance to zone 1'])
             self.d_zone2_lists.append(self.distance_results['Distance to zone 2'])
@@ -3070,7 +3070,6 @@ class DistanceSimulation:
     def outside_pro(self):
         prob = self.round_results['zone of closest point of approach (cpa)'].count(4) / self.n
         return prob
-
 
 
 class Cost:
@@ -3126,7 +3125,7 @@ class Cost:
                 self.con_con = "Ignorable Collision"
                 col_cost = 0
         else:
-            self.col_con= "No Collision"
+            self.col_con = "No Collision"
             col_cost = 0
         col_pro = col_event * np.array([1 - self.tow_s_prob, 1 - self.disconnect_s_prob, 1])
         operation_cost = np.array([self.icecost.towing_cost, self.icecost.disconnect_cost, 0])
@@ -3159,8 +3158,10 @@ class Cost:
             m += 1
         self.average_cost = total_cost / n
 
+
 class SimulationPools:
     """This class is to conduct groups of simulations, to obtain a probability distribution of operation cost, collision probability, etc."""
+
     def __init__(self, poolNo, dsim: DistanceSimulation, cost: Cost):
         self.poolNo = poolNo
         self.dsim = dsim
@@ -3173,7 +3174,6 @@ class SimulationPools:
         self.zone3_prob_list = []
         self.outside_prob_list = []
         self.col_no_list = []
-
 
         self.ki_level_list = []
         self.col_type_list = []
@@ -3202,9 +3202,8 @@ class SimulationPools:
         self.yaw_lists = []
         self.yaw_angle_lists = []
 
-
     def pool_sim(self):
-        j= 1
+        j = 1
         self.cost_lists.clear()
         self.col_prob_list.clear()
         self.exc_prob_list.clear()
@@ -3232,11 +3231,13 @@ class SimulationPools:
             self.col_occur_list.extend(self.cost.col_occur)
             self.ki_level_list.extend(self.cost.ki_level_list)
 
-            #self.col_type_list.append(self.cost.col_type)
-            self.cpa_time_list.extend(self.dsim.round_results['time when iceberg reaches the closest point of approach (cpa)'])
+            # self.col_type_list.append(self.cost.col_type)
+            self.cpa_time_list.extend(
+                self.dsim.round_results['time when iceberg reaches the closest point of approach (cpa)'])
             self.cpa_loc_list.extend(self.dsim.round_results['location of the closest point of approach (cpa)'])
             self.cpa_zone_list.extend(self.dsim.round_results['zone of closest point of approach (cpa)'])
-            self.cpa_d_list.extend(self.dsim.round_results['distance between the closest point of approach (cpa) and the structure'])
+            self.cpa_d_list.extend(
+                self.dsim.round_results['distance between the closest point of approach (cpa) and the structure'])
 
             self.dis_lists.extend(self.dsim.dis_lists)
             self.t_lists.extend(self.dsim.t_lists)
@@ -3255,6 +3256,7 @@ class SimulationPools:
             self.yaw_lists.extend(self.dsim.yaw_lists)
             self.yaw_angle_lists.extend(self.dsim.yaw_angle_lists)
             j += 1
+
 
 class PlotEverything:
     def plot_distance(self, sim, zone: Zones):
@@ -3308,7 +3310,7 @@ class PlotEverything:
         axs.add_artist(circle4)
         figure.suptitle('Iceberg position')
 
-    def plot_prob(self,sim:SimulationPools):
+    def plot_prob(self, sim: SimulationPools):
         figure, axs = plt.subplots(2, 3)
         figure.suptitle("Probability distribution of CPA")
         axs[0, 0].hist(sim.col_prob_list, range=(0, 1), bins=20)
@@ -3333,7 +3335,6 @@ class PlotEverything:
         plt.hist(sim.outside_prob_list, color='grey', label='Outside zones')
         plt.legend()
         plt.xlabel('Probability distribution of CPA location')
-
 
     def plot_cpazone(self, sim):
         plt.hist(sim.cpa_zone_list)
@@ -3366,24 +3367,24 @@ class PlotEverything:
         plt.xlabel('Cost')
         plt.title('Cost distribution of different operations')
 
-
     def plot_col_con(self, sim):
         plt.hist(sim.col_con_list)
         plt.ylabel('No.')
         plt.xlabel('Collision types')
         plt.title('Distribution of collision types')
 
-
     def plot_ki_level(self, sim):
         plt.hist(sim.ki_level_list)
         plt.xlabel('Kinetic energy level when iceberg is at CPA')
         plt.ylabel('No.')
         plt.title('Distribution of Kinetic energy level')
+
     def plot_col_occur(self, sim):
         plt.hist(sim.col_occur_list)
         plt.xlabel('Collision occur or not')
         plt.ylabel('No.')
         plt.title('Distribution of collision occurrence')
+
     def plot_col_no(self, sim):
         plt.hist(sim.col_no_list)
         plt.xlabel('No. of collision in each pool of simulation')
