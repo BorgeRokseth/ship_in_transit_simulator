@@ -1,24 +1,39 @@
-from math import log
-
+from math import log, e
+import scipy.stats as st
 ' 1 represent towing, 2 represent disconnecting.'
-def action_success_rate(action, t):
+def action_cost(action):
+    if action == 1:
+        C_action = -2
+    elif action == 2:
+        C_action = -10
+    return C_action
+
+def action_success_rate_log(action, t):
     if action == 2:
         p_action = 1
     else:
-        if t >= 11:
+        if t >= 9:
             p_action=1
-        elif t <1:
+        elif t <4:
             p_action =0
         else:
-            p_action= log(t, 11)
+            p_action= log(t-3, 6)
     return p_action
 
-def voi(p_accident, C_accident, C_action, a_tpr, b_tpr, a_fpr, b_fpr, C_noaccident, t, action):
+def action_success_rate_normal(action,t):
+    if action == 1:
+        p_action= st.norm.cdf(t, 6, 1)
+    elif action == 2:
+        p_action = 1
+    return p_action
+
+def voi(p_accident, C_accident, a_tpr, b_tpr, a_fpr, b_fpr, C_noaccident, t, action):
 
     TPR = a_tpr + b_tpr * log(13-t,12)
 
     FPR = a_fpr + b_fpr * log(13-t,12)
-    p_action=action_success_rate(action, t)
+    p_action=action_success_rate_log(action, t)
+    C_action=action_cost(action)
 
 
     VoI_precautionary = (1-p_accident) * C_noaccident + C_action + (1-p_action) * C_accident
@@ -33,22 +48,22 @@ p_accident = 0.1
 C_accident = -28
 p_action = [1,1,1,1,0.95,0.8,0.7,0.5,0,0,0,0]
 #p_action = [1,1,1,1,1,1,1,1,1,1,1,1]
-C_action = -2
+action = 1
 a_tpr = 0.5
 b_tpr = 0.48
 a_fpr = 0.1556
 b_fpr = -0.1445
 C_noaccident = 0
-action = 1
+
 
 '''For discrete calcaulation'''
 def get_optimal_time():
-    max_V = voi(p_accident, C_accident, C_action, a_tpr, b_tpr, a_fpr, b_fpr, C_noaccident, 12, action)[3]
+    max_V = voi(p_accident, C_accident, a_tpr, b_tpr, a_fpr, b_fpr, C_noaccident, 12, action)[3]
     optimal_time = t[0]
 
     for i in t:
-        VoI_t = voi(p_accident, C_accident, C_action, a_tpr, b_tpr, a_fpr, b_fpr, C_noaccident, i, action)
-        print(action_success_rate(1,i))
+        VoI_t = voi(p_accident, C_accident, a_tpr, b_tpr, a_fpr, b_fpr, C_noaccident, i, action)
+        print(action_success_rate_log(1,i))
         if VoI_t[3] >= max_V:
             max_V = VoI_t[3]
             optimal_time = i
@@ -64,17 +79,55 @@ def my_range(start, end, step):
         yield start
         start += step
 
-def get_optimal_time_continuous():
-    max_V = voi(p_accident, C_accident, C_action, a_tpr, b_tpr, a_fpr, b_fpr, C_noaccident, 12, action)[3]
+def get_optimal_time_continuous(action):
+    max_V = voi(p_accident, C_accident, a_tpr, b_tpr, a_fpr, b_fpr, C_noaccident, 12, action)[3]
 
 
     for i in my_range(1,12,0.1):
-        VoI_t = voi(p_accident, C_accident, C_action, a_tpr, b_tpr, a_fpr, b_fpr, C_noaccident, i, action)
-        print(i)
-        print(action_success_rate(1,i))
+        VoI_t = voi(p_accident, C_accident, a_tpr, b_tpr, a_fpr, b_fpr, C_noaccident, i, action)
+        #print(i)
+        #print(action_success_rate_normal(1,i))
         if VoI_t[3] >= max_V:
             max_V = VoI_t[3]
             optimal_time = i
     return max_V, optimal_time
 
-print(get_optimal_time_continuous())
+print(get_optimal_time())
+print(get_optimal_time_continuous(1)[1])
+
+def senstivity_study_accident_cost():
+    optimal_time_list = []
+    optimal_value_list = []
+    optimal_action_list = []
+    for k in my_range(-33, -1, 1):
+        C_accident = k
+
+        VoI_neglecting_risk = (1 - p_accident) * C_noaccident + p_accident * C_accident
+
+        #optimal_value = VoI_neglecting_risk
+        #for j in [1, 2]:
+        optimal_time = get_optimal_time_continuous(2)[1]
+        optimal_value = get_optimal_time_continuous(2)[0]
+        optimal_action=2
+        VoI_precautionary = action_cost(2)
+
+        #if value >= max(optimal_value, VoI_precautionary):
+        #    optimal_value = value
+        #    optimal_time = time
+        #    optimal_action = action
+        #else:
+        #    optimal_value = max(VoI_neglecting_risk, VoI_precautionary)
+        #    if VoI_neglecting_risk >= VoI_precautionary:
+        #        optimal_action = 0
+        #        optimal_time = 0
+        #    else:
+        #        optimal_action = 2
+        #        optimal_time = 12
+
+        optimal_time_list.append(optimal_time)
+        optimal_value_list.append(optimal_value)
+        optimal_action_list.append(optimal_action)
+
+    return optimal_time_list, optimal_action_list, optimal_value_list
+
+print(senstivity_study_accident_cost())
