@@ -85,7 +85,7 @@ print(rv.entropy())
 P=[]
 for i in range(10):
   pos1 = (36*i, 72*i)
-  pos2 = (2400, 0)
+  pos2 = (3000, 0)
   r1 = 2500+i*50
   r2 = 500
   def intersecting_area(pos1, pos2, r1, r2):
@@ -109,11 +109,11 @@ for i in range(10):
       area = area1 + area2
     return area
 
-  p = intersecting_area(pos1, pos2, r1, r2)/(math.pi*(r1**2))
+  p = intersecting_area(pos1, pos2, r1, r2)/(math.pi*(max(r1, r2)**2))
   P.append(p)
   print(i)
+  print(p)
 total_p = 1-(1-P[0])*(1-P[1])*(1-P[2])*(1-P[3])*(1-P[4])*(1-P[5])*(1-P[6])*(1-P[7])*(1-P[8])*(1-P[9])
-print(p)
 print(P)
 print(total_p)
 print(math.pi*(r2**2))
