@@ -5,12 +5,12 @@ def action_success_rate(action, t):
     if action == 2:
         p_action = 1
     else:
-        if t >= 9:
+        if t >= 11:
             p_action=1
-        elif t <4:
+        elif t <1:
             p_action =0
         else:
-            p_action= log(t-3, 6)
+            p_action= log(t, 11)
     return p_action
 
 def voi(p_accident, C_accident, C_action, a_tpr, b_tpr, a_fpr, b_fpr, C_noaccident, t, action):
@@ -30,7 +30,7 @@ def voi(p_accident, C_accident, C_action, a_tpr, b_tpr, a_fpr, b_fpr, C_noaccide
 
 t = [12,11,10,9,8,7,6,5,4,3,2,1]
 p_accident = 0.1
-C_accident = -4
+C_accident = -28
 p_action = [1,1,1,1,0.95,0.8,0.7,0.5,0,0,0,0]
 #p_action = [1,1,1,1,1,1,1,1,1,1,1,1]
 C_action = -2
@@ -70,6 +70,7 @@ def get_optimal_time_continuous():
 
     for i in my_range(1,12,0.1):
         VoI_t = voi(p_accident, C_accident, C_action, a_tpr, b_tpr, a_fpr, b_fpr, C_noaccident, i, action)
+        print(i)
         print(action_success_rate(1,i))
         if VoI_t[3] >= max_V:
             max_V = VoI_t[3]
