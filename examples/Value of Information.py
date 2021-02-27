@@ -45,7 +45,7 @@ def voi(p_accident, C_accident, a_tpr, b_tpr, a_fpr, b_fpr, C_noaccident, t, act
 
 t = [12,11,10,9,8,7,6,5,4,3,2,1]
 p_accident = 0.1
-C_accident = -28
+C_accident = -100
 p_action = [1,1,1,1,0.95,0.8,0.7,0.5,0,0,0,0]
 #p_action = [1,1,1,1,1,1,1,1,1,1,1,1]
 action = 1
@@ -63,13 +63,13 @@ def get_optimal_time():
 
     for i in t:
         VoI_t = voi(p_accident, C_accident, a_tpr, b_tpr, a_fpr, b_fpr, C_noaccident, i, action)
-        print(action_success_rate_log(1,i))
+        print(action_success_rate_log(2,i))
         if VoI_t[3] >= max_V:
             max_V = VoI_t[3]
             optimal_time = i
     return max_V, optimal_time
 
-#print(get_optimal_time())
+print(get_optimal_time())
 ''' for continuous calculation'''
 
 
@@ -80,6 +80,7 @@ def my_range(start, end, step):
         start += step
 
 def get_optimal_time_continuous(action):
+
     max_V = voi(p_accident, C_accident, a_tpr, b_tpr, a_fpr, b_fpr, C_noaccident, 12, action)[3]
 
 
@@ -99,30 +100,45 @@ def senstivity_study_accident_cost():
     optimal_time_list = []
     optimal_value_list = []
     optimal_action_list = []
-    for k in my_range(-33, -1, 1):
+
+    for k in my_range(-1000, -1, 1):
+        max_V = [None] * 2
+        VoI_precautionary = [None] * 2
+        time = [None] * 2
+        list = []
         C_accident = k
 
         VoI_neglecting_risk = (1 - p_accident) * C_noaccident + p_accident * C_accident
 
-        #optimal_value = VoI_neglecting_risk
-        #for j in [1, 2]:
-        optimal_time = get_optimal_time_continuous(2)[1]
-        optimal_value = get_optimal_time_continuous(2)[0]
-        optimal_action=2
-        VoI_precautionary = action_cost(2)
+        optimal_value = VoI_neglecting_risk
+        for j in [1, 2]:
+            action = j
+            max_V[j-1] = voi(p_accident, C_accident, a_tpr, b_tpr, a_fpr, b_fpr, C_noaccident, 12, action)[3]
 
-        #if value >= max(optimal_value, VoI_precautionary):
-        #    optimal_value = value
-        #    optimal_time = time
-        #    optimal_action = action
-        #else:
-        #    optimal_value = max(VoI_neglecting_risk, VoI_precautionary)
-        #    if VoI_neglecting_risk >= VoI_precautionary:
-        #        optimal_action = 0
-        #        optimal_time = 0
-        #    else:
-        #        optimal_action = 2
-        #        optimal_time = 12
+            for i in my_range(1, 12, 0.1):
+                VoI_t = voi(p_accident, C_accident, a_tpr, b_tpr, a_fpr, b_fpr, C_noaccident, i, action)
+                # print(i)
+                # print(action_success_rate_normal(1,i))
+                if VoI_t[3] >= max_V[j-1]:
+                    max_V[j-1] = VoI_t[3]
+                    time[j-1] = i
+
+            optimal_action = j
+            VoI_precautionary[j-1] = action_cost(j)
+        list.extend(max_V)
+        list.extend(VoI_precautionary)
+        list.append(VoI_neglecting_risk)
+        optimal_value = max(list)
+        max_index = list.index(optimal_value)
+        if max_index <= 1:
+            optimal_action = max_index+1
+            optimal_time=time[max_index]
+        elif max_index == 4:
+            optimal_action =0
+            optimal_time = 0
+        else:
+            optimal_action = "being precautionary and take action " + str(max_index-1)
+            optimal_time = 12
 
         optimal_time_list.append(optimal_time)
         optimal_value_list.append(optimal_value)
