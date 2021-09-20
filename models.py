@@ -132,13 +132,15 @@ class IceCost(NamedTuple):
 
 
 class MachineryMode:
-    def __init__(self, params: MachineryModeParams):
+    def __init__(self, params: MachineryModeParams, name: str = "main"):
         self.main_engine_capacity = params.main_engine_capacity
         self.electrical_capacity = params.electrical_capacity
         self.shaft_generator_state = params.shaft_generator_state
         self.available_propulsion_power = 0
         self.available_propulsion_power_main_engine = 0
         self.available_propulsion_power_electrical = 0
+        self.name = name
+
 
     def update_available_propulsion_power(self, hotel_load):
         if self.shaft_generator_state == 'MOTOR':

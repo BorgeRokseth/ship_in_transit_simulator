@@ -88,6 +88,7 @@ def make_fuel_estimation_lookup_table(
         "Wind magnitude": wind_magnitude_list
     }
     fuel_table = pd.DataFrame.from_dict(fuel_consumption_data_dict)
+    fuel_table.index.name = "index"
     fuel_table.to_csv(lookup_table_file_name)
 
 if __name__ == "__main__":
