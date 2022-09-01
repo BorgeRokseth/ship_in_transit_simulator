@@ -1,16 +1,18 @@
 from models import ShipModel, ShipConfiguration, EnvironmentConfiguration, \
     MachinerySystemConfiguration, SimulationConfiguration, MachineryModes, \
-    MachineryMode, MachineryModeParams
+    MachineryMode, MachineryModeParams, SpecificFuelConsumptionWartila6L26, SpecificFuelConsumptionBaudouin6M26Dot3, \
+    HeadingControllerGains, HeadingByReferenceController, EngineThrottleFromSpeedSetPoint, ThrottleControllerGains
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-
 
 main_engine_capacity = 2160e3
 diesel_gen_capacity = 510e3
 hybrid_shaft_gen_as_generator = 'GEN'
 hybrid_shaft_gen_as_motor = 'MOTOR'
 hybrid_shaft_gen_as_offline = 'OFF'
+
+time_step = 0.1
 
 ship_config = ShipConfiguration(
     coefficient_of_deadweight_to_displacement=0.7,
@@ -62,10 +64,12 @@ mso_modes = MachineryModes(
      mec_mode,
      pti_mode]
 )
-
+fuel_me = SpecificFuelConsumptionWartila6L26()
+fuel_dg = SpecificFuelConsumptionBaudouin6M26Dot3()
 machinery_config = MachinerySystemConfiguration(
     hotel_load=200e3,
     machinery_modes=mso_modes,
+    machinery_operating_mode=0,
     rated_speed_main_engine_rpm=1000,
     linear_friction_main_engine=68,
     linear_friction_hybrid_shaft_generator=57,
@@ -77,7 +81,9 @@ machinery_config = MachinerySystemConfiguration(
     propeller_speed_to_thrust_force_coefficient=1.7,
     max_rudder_angle_degrees=30,
     rudder_angle_to_yaw_force_coefficient=500e3,
-    rudder_angle_to_sway_force_coefficient=50e3
+    rudder_angle_to_sway_force_coefficient=50e3,
+    specific_fuel_consumption_coefficients_me=fuel_me.fuel_consumption_coefficients(),
+    specific_fuel_consumption_coefficients_dg=fuel_dg.fuel_consumption_coefficients()
 )
 
 ship_models = []
@@ -89,18 +95,21 @@ early_force_samples = []
 
 n = 20
 
+heading_controller_gains = HeadingControllerGains(kp=4, kd=90, ki=0.01)
+heading_controller = HeadingByReferenceController(
+    gains=heading_controller_gains, time_step=time_step,
+    max_rudder_angle=machinery_config.max_rudder_angle_degrees * np.pi/180
+)
+
 for i in range(0,n):
     simulation_setup = SimulationConfiguration(
-        route_name='none',
         initial_north_position_m=0,
         initial_east_position_m=0,
         initial_yaw_angle_rad=2*i * np.pi / 180,
         initial_forward_speed_m_per_s=0,
         initial_sideways_speed_m_per_s=0,
         initial_yaw_rate_rad_per_s=0,
-        initial_propeller_shaft_speed_rad_per_s=0 * np.pi / 30,
-        machinery_system_operating_mode=1,
-        integration_step=0.1,
+        integration_step=time_step,
         simulation_time=200
     )
 
@@ -109,21 +118,25 @@ for i in range(0,n):
             ship_config=ship_config,
             machinery_config=machinery_config,
             environment_config=env_config,
-            simulation_config=simulation_setup)
+            simulation_config=simulation_setup,
+            initial_propeller_shaft_speed_rad_per_s=400 * np.pi / 30)
     )
 
     desired_heading_radians = 2 * i * np.pi / 180
 
     while ship_models[-1].int.time < ship_models[-1].int.sim_time:
         # Find appropriate rudder angle and engine throttle
-        rudder_angle = -ship_models[-1].rudderang_from_headingref(desired_heading_radians)
+        measured_heading = ship_models[-1].yaw_angle
+        rudder_angle = heading_controller.rudder_angle_from_heading_setpoint(
+            heading_ref=desired_heading_radians, measured_heading=measured_heading
+        )
         if ship_models[-1].int.time < 20:
             engine_load = 0
         else:
             engine_load = (n - i) / n
         # Update and integrate differential equations for current time step
         ship_models[-1].store_simulation_data(engine_load)
-        ship_models[-1].update_differentials(load_perc=engine_load, rudder_angle=rudder_angle)
+        ship_models[-1].update_differentials(engine_throttle=engine_load, rudder_angle=rudder_angle)
         ship_models[-1].integrate_differentials()
         ship_models[-1].int.next_time()
 

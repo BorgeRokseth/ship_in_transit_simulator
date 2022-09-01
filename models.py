@@ -35,34 +35,6 @@ class EnvironmentConfiguration(NamedTuple):
 
 
 class SimulationConfiguration(NamedTuple):
-    route_name: str
-    initial_north_position_m: float
-    initial_east_position_m: float
-    initial_yaw_angle_rad: float
-    initial_forward_speed_m_per_s: float
-    initial_sideways_speed_m_per_s: float
-    initial_yaw_rate_rad_per_s: float
-    initial_propeller_shaft_speed_rad_per_s: float
-    machinery_system_operating_mode: int
-    integration_step: float
-    simulation_time: float
-
-
-class SimplifiedPropulsionSimulationConfiguration(NamedTuple):
-    route_name: str
-    initial_north_position_m: float
-    initial_east_position_m: float
-    initial_yaw_angle_rad: float
-    initial_forward_speed_m_per_s: float
-    initial_sideways_speed_m_per_s: float
-    initial_yaw_rate_rad_per_s: float
-    initial_thrust_force: float
-    machinery_system_operating_mode: int
-    integration_step: float
-    simulation_time: float
-
-
-class DriftSimulationConfiguration(NamedTuple):
     initial_north_position_m: float
     initial_east_position_m: float
     initial_yaw_angle_rad: float
@@ -148,9 +120,16 @@ class MachineryModes:
         self.list_of_modes = list_of_modes
 
 
+class FuelConsumptionCoefficients(NamedTuple):
+    a: float
+    b: float
+    c: float
+
+
 class MachinerySystemConfiguration(NamedTuple):
     hotel_load: float
     machinery_modes: MachineryModes
+    machinery_operating_mode: int
     rated_speed_main_engine_rpm: float
     linear_friction_main_engine: float
     linear_friction_hybrid_shaft_generator: float
@@ -163,45 +142,342 @@ class MachinerySystemConfiguration(NamedTuple):
     rudder_angle_to_sway_force_coefficient: float
     rudder_angle_to_yaw_force_coefficient: float
     max_rudder_angle_degrees: float
+    specific_fuel_consumption_coefficients_me: FuelConsumptionCoefficients
+    specific_fuel_consumption_coefficients_dg: FuelConsumptionCoefficients
 
 
 class SimplifiedPropulsionMachinerySystemConfiguration(NamedTuple):
     hotel_load: float
     machinery_modes: MachineryModes
+    machinery_operating_mode: int
+    specific_fuel_consumption_coefficients_me: FuelConsumptionCoefficients
+    specific_fuel_consumption_coefficients_dg: FuelConsumptionCoefficients
     thrust_force_dynamic_time_constant: float
     rudder_angle_to_sway_force_coefficient: float
     rudder_angle_to_yaw_force_coefficient: float
     max_rudder_angle_degrees: float
 
 
-class ShipModel:
-    ''' Creates a ship model object that can be used to simulate a ship in transit
+class SpecificFuelConsumptionWartila6L26:
+    def __init__(self):
+        self.a = 128.9
+        self.b = -168.9
+        self.c = 246.8
 
-        The ships model is propelled by a single propeller and steered by a rudder.
-        The propeller is powered by either the main engine, an auxiliary motor
-        referred to as the hybrid shaft generator, or both. The model contains the
-        following states:
-        - North position of ship
-        - East position of ship
-        - Yaw angle (relative to north axis)
-        - Surge velocity (forward)
-        - Sway velocity (sideways)
-        - Yaw rate
-        - Propeller shaft speed
+    def fuel_consumption_coefficients(self):
+        return FuelConsumptionCoefficients(
+            a=self.a,
+            b=self.b,
+            c=self.c
+        )
 
-        Simulation results are stored in the instance variable simulation_results
-    '''
 
-    def __init__(self, ship_config: ShipConfiguration,
+class SpecificFuelConsumptionBaudouin6M26Dot3:
+    def __init__(self):
+        self.a = 108.7
+        self.b = -289.9
+        self.c = 324.9
+
+    def fuel_consumption_coefficients(self):
+        return FuelConsumptionCoefficients(
+            a=self.a,
+            b=self.b,
+            c=self.c
+        )
+
+
+class RudderConfiguration(NamedTuple):
+    rudder_angle_to_sway_force_coefficient: float
+    rudder_angle_to_yaw_force_coefficient: float
+    max_rudder_angle_degrees: float
+
+
+class BaseMachineryModel:
+    def __init__(self,
+                 fuel_coeffs_for_main_engine: FuelConsumptionCoefficients,
+                 fuel_coeffs_for_diesel_gen: FuelConsumptionCoefficients,
+                 rudder_config: RudderConfiguration,
+                 machinery_modes: MachineryModes,
+                 hotel_load: float,
+                 operating_mode: int,
+                 time_step: float):
+        self.machinery_modes = machinery_modes
+        self.hotel_load = hotel_load  # 200000  # 0.2 MW
+        self.update_available_propulsion_power()
+        self.mode = self.machinery_modes.list_of_modes[operating_mode]
+
+        # Set up integration
+        self.int = EulerInt()  # Instantiate the Euler integrator
+        self.int.set_dt(time_step)
+
+        self.c_rudder_v = rudder_config.rudder_angle_to_sway_force_coefficient
+        self.c_rudder_r = rudder_config.rudder_angle_to_yaw_force_coefficient
+        self.rudder_ang_max = rudder_config.max_rudder_angle_degrees * np.pi / 180
+
+        self.fuel_coeffs_for_main_engine = fuel_coeffs_for_main_engine
+        self.fuel_coeffs_for_diesel_gen = fuel_coeffs_for_diesel_gen
+        self.fuel_cons_me = 0.0  # Initial fuel cons for ME
+        self.fuel_cons_electrical = 0.0  # Initial fuel cons for HSG
+        self.fuel_cons = 0.0  # Initial total fuel cons
+        self.power_me = []  # Array for storing ME power cons. data
+        self.power_hsg = []  # Array for storing HSG power cons. data
+        self.me_rated = []  # Array for storing ME rated power data
+        self.hsg_rated = []  # Array for storing HSG rated power data
+        self.load_hist = []  # Array for storing load percentage history
+        self.fuel_rate_me = []  # Array for storing ME fuel cons. rate
+        self.fuel_rate_hsg = []  # Array for storing HSG fuel cons. rate
+        self.fuel_me = []  # Array for storing ME fuel cons.
+        self.fuel_hsg = []  # Array for storing HSG fuel cons.
+        self.fuel = []  # Array for storing total fuel cons
+        self.fuel_rate = []
+        self.load_perc_me = []
+        self.load_perc_hsg = []
+        self.power_total = []
+        self.power_prop = []
+
+    def update_available_propulsion_power(self):
+        for mode in self.machinery_modes.list_of_modes:
+            mode.update_available_propulsion_power(self.hotel_load)
+
+    def mode_selector(self, mode: int):
+        self.mode = self.machinery_modes.list_of_modes[mode]
+
+    def load_perc(self, load_perc):
+        """ Calculates the load percentage on the main engine and the diesel_gens based on the
+            operating mode of the machinery system (MSO-mode).
+
+            Args:
+                load_perc (float): Current load on the machinery system as a fraction of the
+                    total power that can be delivered by the machinery system in the current mode.
+            Returns:
+                load_perc_me (float): Current load on the ME as a fraction of ME MCR
+                load_perc_hsg (float): Current load on the HSG as a fraction of HSG MCR
+        """
+        load_data = self.mode.distribute_load(load_perc=load_perc, hotel_load=self.hotel_load)
+        return load_data.load_percentage_on_main_engine, load_data.load_percentage_on_electrical
+
+    @staticmethod
+    def spec_fuel_cons(load_perc, coeffs: FuelConsumptionCoefficients):
+        """ Calculate fuel consumption rate for engine.
+        """
+        rate = coeffs.a * load_perc ** 2 + coeffs.b * load_perc + coeffs.c
+        return rate / 3.6e9
+
+    def fuel_consumption(self, load_perc):
+        '''
+            Args:
+                load_perc (float): The fraction of produced power over the online power production capacity.
+            Returns:
+                rate_me (float): Fuel consumption rate for the main engine
+                rate_hsg (float): Fuel consumption rate for the HSG
+                fuel_cons_me (float): Accumulated fuel consumption for the ME
+                fuel_cons_hsg (float): Accumulated fuel consumption for the HSG
+                fuel_cons (float): Total accumulated fuel consumption for the ship
+        '''
+        load_data = self.mode.distribute_load(load_perc=load_perc, hotel_load=self.hotel_load)
+        if load_data.load_on_main_engine == 0:
+            rate_me = 0
+        else:
+            rate_me = load_data.load_on_main_engine * self.spec_fuel_cons(
+                load_data.load_percentage_on_main_engine, coeffs=self.fuel_coeffs_for_main_engine
+            )
+
+        if load_data.load_percentage_on_electrical == 0:
+            rate_electrical = 0
+        else:
+            rate_electrical = load_data.load_on_electrical * self.spec_fuel_cons(
+                load_data.load_percentage_on_electrical, coeffs=self.fuel_coeffs_for_diesel_gen
+            )
+
+        self.fuel_cons_me = self.fuel_cons_me + rate_me * self.int.dt
+        self.fuel_cons_electrical = self.fuel_cons_electrical + rate_electrical * self.int.dt
+        self.fuel_cons = self.fuel_cons + (rate_me + rate_electrical) * self.int.dt
+        return rate_me, rate_electrical, self.fuel_cons_me, self.fuel_cons_electrical, self.fuel_cons
+
+
+class ShipMachineryModel(BaseMachineryModel):
+    def __init__(self,
                  machinery_config: MachinerySystemConfiguration,
-                 environment_config: EnvironmentConfiguration,
-                 simulation_config: SimulationConfiguration):
-        route_name = simulation_config.route_name
-        if route_name != 'none':
-            # Route following
-            self.navigate = NavigationSystem(route_name)
-            self.next_wpt = 1
-            self.prev_wpt = 0
+                 initial_propeller_shaft_speed_rad_per_sec: float,
+                 time_step: float,
+                 ):
+        super().__init__(
+            fuel_coeffs_for_main_engine=machinery_config.specific_fuel_consumption_coefficients_me,
+            fuel_coeffs_for_diesel_gen=machinery_config.specific_fuel_consumption_coefficients_dg,
+            rudder_config=RudderConfiguration(
+                rudder_angle_to_yaw_force_coefficient=machinery_config.rudder_angle_to_yaw_force_coefficient,
+                rudder_angle_to_sway_force_coefficient=machinery_config.rudder_angle_to_sway_force_coefficient,
+                max_rudder_angle_degrees=machinery_config.max_rudder_angle_degrees
+            ),
+            machinery_modes=machinery_config.machinery_modes,
+            hotel_load=machinery_config.hotel_load,
+            operating_mode=machinery_config.machinery_operating_mode,
+            time_step=time_step)
+        self.w_rated_me = machinery_config.rated_speed_main_engine_rpm * np.pi / 30
+        self.d_me = machinery_config.linear_friction_main_engine
+        self.d_hsg = machinery_config.linear_friction_hybrid_shaft_generator
+        self.r_me = machinery_config.gear_ratio_between_main_engine_and_propeller
+        self.r_hsg = machinery_config.gear_ratio_between_hybrid_shaft_generator_and_propeller
+        self.jp = machinery_config.propeller_inertia
+        self.kp = machinery_config.propeller_speed_to_torque_coefficient
+        self.dp = machinery_config.propeller_diameter
+        self.kt = machinery_config.propeller_speed_to_thrust_force_coefficient
+        self.shaft_speed_max = 1.1 * self.w_rated_me * self.r_me
+
+        self.omega = initial_propeller_shaft_speed_rad_per_sec
+        self.d_omega = 0
+
+        # Set up integration
+        self.int = EulerInt()  # Instantiate the Euler integrator
+        self.int.set_dt(time_step)
+
+        self.specific_fuel_coeffs_for_main_engine = FuelConsumptionCoefficients(a=128.89, b=-168.93, c=246.76)
+        self.specific_fuel_coeffs_for_dg = FuelConsumptionCoefficients(a=180.71, b=-289.90, c=324.90)
+        self.fuel_cons_me = 0.0  # Initial fuel cons for ME
+        self.fuel_cons_electrical = 0.0  # Initial fuel cons for HSG
+        self.fuel_cons = 0.0  # Initial total fuel cons
+        self.power_me = []  # Array for storing ME power cons. data
+        self.power_hsg = []  # Array for storing HSG power cons. data
+        self.me_rated = []  # Array for storing ME rated power data
+        self.hsg_rated = []  # Array for storing HSG rated power data
+        self.load_hist = []  # Array for storing load percentage history
+        self.fuel_rate_me = []  # Array for storing ME fuel cons. rate
+        self.fuel_rate_hsg = []  # Array for storing HSG fuel cons. rate
+        self.fuel_me = []  # Array for storing ME fuel cons.
+        self.fuel_hsg = []  # Array for storing HSG fuel cons.
+        self.fuel = []  # Array for storing total fuel cons
+        self.fuel_rate = []
+        self.load_perc_me = []
+        self.load_perc_hsg = []
+        self.power_total = []
+        self.power_prop = []
+
+
+
+    def shaft_eq(self, torque_main_engine, torque_hsg):
+        ''' Updates the time differential of the shaft speed
+            equation.
+        '''
+        eq_me = (torque_main_engine - self.d_me * self.omega) / self.r_me
+        eq_hsg = (torque_hsg - self.d_hsg * self.omega) / self.r_hsg
+        self.d_omega = (eq_me + eq_hsg - self.kp * self.omega ** 2) / self.jp
+
+    def thrust(self):
+        ''' Updates the thrust force based on the shaft speed (self.omega)
+        '''
+        return self.dp ** 4 * self.kt * self.omega * abs(self.omega)
+
+    def main_engine_torque(self, load_perc):
+        ''' Returns the torque of the main engine as a
+            function of the load percentage parameter
+        '''
+        if load_perc is None:
+            return 0
+        return min(load_perc * self.mode.available_propulsion_power_main_engine / (self.omega + 0.1),
+                       self.mode.available_propulsion_power_main_engine / 5 * np.pi / 30)
+
+    def hsg_torque(self, load_perc):
+        ''' Returns the torque of the HSG as a
+            function of the load percentage parameter
+        '''
+        if load_perc is None:
+            return 0
+        return min(load_perc * self.mode.available_propulsion_power_electrical / (self.omega + 0.1),
+                   self.mode.available_propulsion_power_electrical / 5 * np.pi / 30)
+
+    def integrate_differentials(self):
+        ''' Integrates the differential equation one time step ahead
+        '''
+        self.omega = self.int.integrate(x=self.omega, dx=self.d_omega)
+
+    def update_shaft_equation(self, load_percentage):
+        self.shaft_eq(
+            torque_main_engine=self.main_engine_torque(load_perc=load_percentage),
+            torque_hsg=self.hsg_torque(load_perc=load_percentage)
+        )
+
+    @staticmethod
+    def spec_fuel_cons(load_perc, coeffs: FuelConsumptionCoefficients):
+        """ Calculate fuel consumption rate for engine.
+        """
+        rate = coeffs.a * load_perc ** 2 + coeffs.b * load_perc + coeffs.c
+        return rate / 3.6e9
+
+    def fuel_consumption(self, load_perc):
+        '''
+            Args:
+                load_perc (float): The fraction of produced power over the online power production capacity.
+            Returns:
+                rate_me (float): Fuel consumption rate for the main engine
+                rate_hsg (float): Fuel consumption rate for the HSG
+                fuel_cons_me (float): Accumulated fuel consumption for the ME
+                fuel_cons_hsg (float): Accumulated fuel consumption for the HSG
+                fuel_cons (float): Total accumulated fuel consumption for the ship
+        '''
+        load_data = self.mode.distribute_load(load_perc=load_perc, hotel_load=self.hotel_load)
+        if load_data.load_on_main_engine == 0:
+            rate_me = 0
+        else:
+            rate_me = load_data.load_on_main_engine * self.spec_fuel_cons(
+                load_data.load_percentage_on_main_engine, coeffs=self.specific_fuel_coeffs_for_main_engine
+            )
+
+        if load_data.load_percentage_on_electrical == 0:
+            rate_electrical = 0
+        else:
+            rate_electrical = load_data.load_on_electrical * self.spec_fuel_cons(
+                load_data.load_percentage_on_electrical, coeffs=self.specific_fuel_coeffs_for_dg
+            )
+
+        self.fuel_cons_me = self.fuel_cons_me + rate_me * self.int.dt
+        self.fuel_cons_electrical = self.fuel_cons_electrical + rate_electrical * self.int.dt
+        self.fuel_cons = self.fuel_cons + (rate_me + rate_electrical) * self.int.dt
+        return rate_me, rate_electrical, self.fuel_cons_me, self.fuel_cons_electrical, self.fuel_cons
+
+
+class SimplifiedMachineryModel(BaseMachineryModel):
+    def __init__(self, machinery_config: SimplifiedPropulsionMachinerySystemConfiguration,
+                 time_step: float,
+                 initial_thrust_force: float):
+        super().__init__(
+            fuel_coeffs_for_main_engine=machinery_config.specific_fuel_consumption_coefficients_me,
+            fuel_coeffs_for_diesel_gen=machinery_config.specific_fuel_consumption_coefficients_dg,
+            rudder_config=RudderConfiguration(
+                rudder_angle_to_sway_force_coefficient=machinery_config.rudder_angle_to_sway_force_coefficient,
+                rudder_angle_to_yaw_force_coefficient=machinery_config.rudder_angle_to_yaw_force_coefficient,
+                max_rudder_angle_degrees=machinery_config.max_rudder_angle_degrees
+            ),
+            machinery_modes=machinery_config.machinery_modes,
+            hotel_load=machinery_config.hotel_load,
+            operating_mode=machinery_config.machinery_operating_mode,
+            time_step=time_step)
+
+        self.update_available_propulsion_power()
+
+        self.thrust = initial_thrust_force
+        self.d_thrust = 0
+        self.k_thrust = 2160 / 790
+        self.thrust_time_constant = machinery_config.thrust_force_dynamic_time_constant
+
+    def update_thrust_force(self, load_perc):
+        ''' Updates the thrust force based on engine power
+        '''
+        power = load_perc * (self.mode.available_propulsion_power_main_engine
+                             + self.mode.available_propulsion_power_electrical)
+        self.d_thrust = (-self.k_thrust * self.thrust + power) / self.thrust_time_constant
+
+    def integrate_differentials(self):
+        ''' Integrates the differential equation one time step ahead
+        '''
+        self.thrust = self.int.integrate(x=self.thrust, dx=self.d_thrust)
+
+
+class BaseShipModel:
+    def __init__(
+            self, ship_config: ShipConfiguration,
+            simulation_config: SimulationConfiguration,
+            environment_config: EnvironmentConfiguration
+    ):
 
         payload = 0.9 * (ship_config.dead_weight_tonnage - ship_config.bunkers)
         lsw = ship_config.dead_weight_tonnage / ship_config.coefficient_of_deadweight_to_displacement \
@@ -225,31 +501,6 @@ class ShipModel:
         self.kv = ship_config.nonlinear_friction_coefficient__in_sway  # 4000.0  # non-linear friction coeff in sway
         self.kr = ship_config.nonlinear_friction_coefficient__in_yaw  # 400.0  # non-linear friction coeff in yaw
 
-
-        # Machinery system params
-        self.machinery_modes = machinery_config.machinery_modes
-        self.hotel_load = machinery_config.hotel_load  # 200000  # 0.2 MW
-        self.update_available_propulsion_power()
-        mode = simulation_config.machinery_system_operating_mode
-        self.mode = self.machinery_modes.list_of_modes[mode]
-
-        #self.p_rated_me = machinery_config.mcr_main_engine  # 2160000  # 2.16 MW
-        #self.p_rated_hsg = machinery_config.mcr_hybrid_shaft_generator  # 590000  # 0.59 MW
-        self.w_rated_me = machinery_config.rated_speed_main_engine_rpm * np.pi / 30  # 1000 * np.pi / 30  # rated speed
-        self.d_me = machinery_config.linear_friction_main_engine  # 68.0  # linear friction for main engine speed
-        self.d_hsg = machinery_config.linear_friction_hybrid_shaft_generator  # 57.0  # linear friction for HSG speed
-        self.r_me = machinery_config.gear_ratio_between_main_engine_and_propeller  # 0.6  # gear ratio between main engine and propeller
-        self.r_hsg = machinery_config.gear_ratio_between_hybrid_shaft_generator_and_propeller  # 0.6  # gear ratio between main engine and propeller
-        self.jp = machinery_config.propeller_inertia  # 6000  # propeller inertia
-        self.kp = machinery_config.propeller_speed_to_torque_coefficient  # 7.5  # constant relating omega to torque
-        self.dp = machinery_config.propeller_diameter  # 3.1  # propeller diameter
-        self.kt = machinery_config.propeller_speed_to_thrust_force_coefficient  # 1.7  # constant relating omega to thrust force
-        self.shaft_speed_max = 1.1 * self.w_rated_me * self.r_me  # Used for saturation of power sources
-
-        self.c_rudder_v = machinery_config.rudder_angle_to_sway_force_coefficient  # 50000.0  # tuning param for simplified rudder response model
-        self.c_rudder_r = machinery_config.rudder_angle_to_yaw_force_coefficient  # 500000.0  # tuning param for simplified rudder response model
-        self.rudder_ang_max = machinery_config.max_rudder_angle_degrees * np.pi / 180  # 30 * np.pi / 180  # Maximal rudder angle deflection (both ways)
-
         # Environmental conditions
         self.vel_c = np.array([environment_config.current_velocity_component_from_north,
                                environment_config.current_velocity_component_from_east,
@@ -257,36 +508,21 @@ class ShipModel:
         self.wind_dir = environment_config.wind_direction
         self.wind_speed = environment_config.wind_speed
 
-        # Operational parameters used to calculate loading percent on each power source
-        self.p_rel_rated_hsg = 0.0
-        self.p_rel_rated_me = 0.0
+        # Initialize states
+        self.north = simulation_config.initial_north_position_m
+        self.east = simulation_config.initial_east_position_m
+        self.yaw_angle = simulation_config.initial_yaw_angle_rad
+        self.forward_speed = simulation_config.initial_forward_speed_m_per_s
+        self.sideways_speed = simulation_config.initial_sideways_speed_m_per_s
+        self.yaw_rate = simulation_config.initial_yaw_rate_rad_per_s
 
-        # Configure machinery system according to self.mso
-        #self.mso_mode = simulation_config.machinery_system_operating_mode
-        #self.mode_selector(machinery_config.mcr_main_engine,
-        #                   machinery_config.mcr_hybrid_shaft_generator)
-
-        # Initial states (can be altered using self.set_state_vector(x))
-        self.n = simulation_config.initial_north_position_m
-        self.e = simulation_config.initial_east_position_m
-        self.psi = simulation_config.initial_yaw_angle_rad
-        self.u = simulation_config.initial_forward_speed_m_per_s
-        self.v = simulation_config.initial_sideways_speed_m_per_s
-        self.r = simulation_config.initial_yaw_rate_rad_per_s
-        self.omega = simulation_config.initial_propeller_shaft_speed_rad_per_s
-        self.x = self.update_state_vector()
-        self.states = np.empty(7)
-
-        # Differentials
-        self.d_n = self.d_e = self.d_psi = 0
-        self.d_u = self.d_v = self.d_r = 0
-        self.d_omega = 0
-
-        # Set up ship control systems
-        self.initialize_shaft_speed_controller(kp=0.05, ki=0.005)
-        self.initialize_ship_speed_controller(kp=7, ki=0.13)
-        self.initialize_ship_heading_controller(kp=4, kd=90, ki=0.005)
-        self.initialize_heading_filter(kp=0.5, kd=10, t=5000)
+        # Initialize differentials
+        self.d_north = 0
+        self.d_east = 0
+        self.d_yaw = 0
+        self.d_forward_speed = 0
+        self.d_sideways_speed = 0
+        self.d_yaw_rate = 0
 
         # Set up integration
         self.int = EulerInt()  # Instantiate the Euler integrator
@@ -297,27 +533,7 @@ class ShipModel:
         self.drw = ShipDraw()  # Instantiate the ship drawing class
         self.ship_drawings = [[], []]  # Arrays for storing ship drawing data
 
-        # Fuel
-        self.fuel_cons_me = 0.0  # Initial fuel cons for ME
-        self.fuel_cons_electrical = 0.0  # Initial fuel cons for HSG
-        self.fuel_cons = 0.0  # Initial total fuel cons
-        self.power_me = []  # Array for storing ME power cons. data
-        self.power_hsg = []  # Array for storing HSG power cons. data
-        self.me_rated = []  # Array for storing ME rated power data
-        self.hsg_rated = []  # Array for storing HSG rated power data
-        self.load_hist = []  # Array for storing load percentage history
-        self.fuel_rate_me = []  # Array for storing ME fuel cons. rate
-        self.fuel_rate_hsg = []  # Array for storing HSG fuel cons. rate
-        self.fuel_me = []  # Array for storing ME fuel cons.
-        self.fuel_hsg = []  # Array for storing HSG fuel cons.
-        self.fuel = []  # Array for storing total fuel cons
-        self.fuel_rate = []
-        self.load_perc_me = []
-        self.load_perc_hsg = []
-        self.power_total = []
-        self.power_prop = []
-
-        # Wind effect on ship
+        # Setup wind effect on ship
         self.rho_a = 1.2
         self.h_f = 8.0  # mean height above water seen from the front
         self.h_s = 8.0  # mean height above water seen from the side
@@ -326,21 +542,6 @@ class ShipModel:
         self.cx = 0.5
         self.cy = 0.7
         self.cn = 0.08
-
-        # Fuel consumption function parameters
-        self.a_me = 128.89
-        self.b_me = -168.93
-        self.c_me = 246.76
-
-        self.a_dg = 180.71
-        self.b_dg = -289.90
-        self.c_dg = 324.90
-
-        self.simulation_results = defaultdict(list)
-
-    def update_available_propulsion_power(self):
-        for mode in self.machinery_modes.list_of_modes:
-            mode.update_available_propulsion_power(self.hotel_load)
 
     def set_added_mass(self, surge_coeff, sway_coeff, yaw_coeff):
         ''' Sets the added mass in surge due to surge motion, sway due
@@ -360,93 +561,6 @@ class ShipModel:
         n_dr = self.i_z * yaw_coeff
         return x_du, y_dv, n_dr
 
-    def mode_selector(self, mode: int):
-        self.mode = self.machinery_modes.list_of_modes[mode]
-
-    def spec_fuel_cons_me(self, load_perc):
-        """ Calculate fuel consumption rate for the main engine.
-
-            Args:
-                load_perc (float): The fraction of the mcr load on the ME
-            Returns:
-                Number of kilograms of fuel per second used by ME
-        """
-        rate = self.a_me * load_perc ** 2 + self.b_me * load_perc + self.c_me
-        return rate / 3.6e9
-
-    def spec_fuel_cons_dg(self, load_perc):
-        """ Calculate fuel consumption rate for a diesel generator.
-
-            Args:
-                load_perc (float): The fraction of the mcr load on the DG
-            Returns:
-                Number of kilograms of fuel per second used by DG
-        """
-        rate = self.a_dg * load_perc ** 2 + self.b_dg * load_perc + self.c_dg
-        return rate / 3.6e9
-
-    def load_perc(self, load_perc):
-        """ Calculates the load percentage on the main engine and the diesel_gens based on the
-            operating mode of the machinery system (MSO-mode).
-
-            Args:
-                load_perc (float): Current load on the machinery system as a fraction of the
-                    total power that can be delivered by the machinery system in the current mode.
-            Returns:
-                load_perc_me (float): Current load on the ME as a fraction of ME MCR
-                load_perc_hsg (float): Current load on the HSG as a fraction of HSG MCR
-        """
-        load_data = self.mode.distribute_load(load_perc=load_perc, hotel_load=self.hotel_load)
-        return load_data.load_percentage_on_main_engine, load_data.load_percentage_on_electrical
-
-    def fuel_consumption(self, load_perc):
-        '''
-            Args:
-                load_perc (float): The fraction of produced power over the online power production capacity.
-            Returns:
-                rate_me (float): Fuel consumption rate for the main engine
-                rate_hsg (float): Fuel consumption rate for the HSG
-                fuel_cons_me (float): Accumulated fuel consumption for the ME
-                fuel_cons_hsg (float): Accumulated fuel consumption for the HSG
-                fuel_cons (float): Total accumulated fuel consumption for the ship
-        '''
-        '''
-        if self.mso_mode == 1:
-            load_me = load_perc * self.p_rated_me + self.hotel_load
-            load_perc_me = load_me / self.p_rated_me
-            rate_me = load_me * self.spec_fuel_cons_me(load_perc_me)
-            rate_hsg = 0.0
-        elif self.mso_mode == 2:
-            load_me = load_perc * self.p_rated_me
-            load_perc_me = load_me / self.p_rated_me
-            load_hsg = self.hotel_load
-            load_perc_hsg = load_hsg / self.p_rated_hsg
-            rate_me = load_me * self.spec_fuel_cons_me(load_perc_me)
-            rate_hsg = load_hsg * self.spec_fuel_cons_dg(load_perc_hsg)
-        elif self.mso_mode == 3:
-            load_hsg = (load_perc * self.p_rated_hsg + self.hotel_load)
-            load_perc_hsg = load_hsg / self.p_rated_hsg
-            rate_me = 0.0
-            rate_hsg = load_hsg * self.spec_fuel_cons_dg(load_perc_hsg)
-        '''
-        load_data = self.mode.distribute_load(load_perc=load_perc, hotel_load=self.hotel_load)
-        if load_data.load_on_main_engine == 0:
-            rate_me = 0
-        else:
-            rate_me = load_data.load_on_main_engine \
-                      * self.spec_fuel_cons_me(load_data.load_percentage_on_main_engine)
-
-        if load_data.load_percentage_on_electrical == 0:
-            rate_electrical = 0
-        else:
-            rate_electrical = load_data.load_on_electrical \
-                              * self.spec_fuel_cons_dg(load_data.load_percentage_on_electrical)
-
-        self.fuel_cons_me = self.fuel_cons_me + rate_me * self.int.dt
-        self.fuel_cons_electrical = self.fuel_cons_electrical + rate_electrical * self.int.dt
-        self.fuel_cons = self.fuel_cons + (rate_me + rate_electrical) * self.int.dt
-        return rate_me, rate_electrical, self.fuel_cons_me, self.fuel_cons_electrical, self.fuel_cons
-
     def get_wind_force(self):
         ''' This method calculates the forces due to the relative
             wind speed, acting on teh ship in surge, sway and yaw
@@ -454,10 +568,10 @@ class ShipModel:
 
             :return: Wind force acting in surge, sway and yaw
         '''
-        uw = self.wind_speed * np.cos(self.wind_dir - self.psi)
-        vw = self.wind_speed * np.sin(self.wind_dir - self.psi)
-        u_rw = uw - self.u
-        v_rw = vw - self.v
+        uw = self.wind_speed * np.cos(self.wind_dir - self.yaw_angle)
+        vw = self.wind_speed * np.sin(self.wind_dir - self.yaw_angle)
+        u_rw = uw - self.forward_speed
+        v_rw = vw - self.sideways_speed
         gamma_rw = -np.arctan2(v_rw, u_rw)
         wind_rw2 = u_rw ** 2 + v_rw ** 2
         c_x = -self.cx * np.cos(gamma_rw)
@@ -469,203 +583,173 @@ class ShipModel:
         tau_n = tau_coeff * c_n * self.proj_area_l * self.l_ship
         return np.array([tau_u, tau_v, tau_n])
 
-    def update_state_vector(self):
-        ''' Update the state vector according to the individual state values
-        '''
-        return np.array([self.n, self.e, self.psi, self.u, self.v, self.r, self.omega])
-
-    def set_north_pos(self, val):
-        ''' Set the north position of the ship and update the state vector
-        '''
-        self.n = val
-        self.x = self.update_state_vector()
-
-    def set_east_pos(self, val):
-        ''' Set the east position of the ship and update the state vector
-        '''
-        self.e = val
-        self.x = self.update_state_vector()
-
-    def set_yaw_angle(self, val):
-        ''' Set the yaw angle of the ship and update the state vector
-        '''
-        self.psi = val
-        self.x = self.update_state_vector()
-
-    def set_surge_speed(self, val):
-        ''' Set the surge speed of the ship and update the state vector
-        '''
-        self.u = val
-        self.x = self.update_state_vector()
-
-    def set_sway_speed(self, val):
-        ''' Set the sway speed of the ship and update the state vector
-        '''
-        self.v = val
-        self.x = self.update_state_vector()
-
-    def set_yaw_rate(self, val):
-        ''' Set the yaw rate of the ship and update the state vector
-        '''
-        self.r = val
-        self.x = self.update_state_vector()
-
-    def set_shaft_speed(self, val):
-        ''' Set the propeller shaft speed and update the state vector
-        '''
-        self.omega = val
-        self.x = self.update_state_vector()
-
-    def initialize_shaft_speed_controller(self, kp, ki):
-        ''' This method sets up and configures the shaft speed
-            controller of the ship
-        '''
-        self.shaft_speed_controller = ControllerLib()
-        self.shaft_speed_controller.set_kp(kp)
-        self.shaft_speed_controller.set_ki(ki)
-
-    def initialize_ship_speed_controller(self, kp, ki):
-        ''' This method sets up and configures the ship speed
-            controller.
-        '''
-        self.ship_speed_controller = ControllerLib()
-        self.ship_speed_controller.set_kp(kp)
-        self.ship_speed_controller.set_ki(ki)
-
-    def initialize_ship_heading_controller(self, kp, kd, ki):
-        ''' This method sets up and configures the ship heading
-            controller.
-        '''
-        self.ship_heading_controller = ControllerLib()
-        self.ship_heading_controller.set_kp(kp)
-        self.ship_heading_controller.set_kd(-kd)
-        self.ship_heading_controller.set_ki(ki)
-
-    def initialize_heading_filter(self, kp, kd, t):
-        ''' This method sets up and configures a low pass filter
-            to smooth the hading setpoint signal for the ship
-            heading controller.
-        '''
-        self.ship_heading_filter = ControllerLib()
-        self.ship_heading_filter.set_kp(kp)
-        self.ship_heading_filter.set_kd(kd)
-        self.ship_heading_filter.set_T(t)
-
-    def loadperc_from_speedref(self, speed_ref):
-        ''' Calculates suitable machinery load percentage for the ship to
-            track the speed reference signal. The shaft speed controller
-            is used to calculate suitable shaft speed to follow the desired
-            ship speed and suitable load percentage to follow the calculated
-            shaft speed. The load percentage is the fraction of the produced
-            power over the total power capacity in the current configuration.
-        '''
-        ref_shaft_speed = self.ship_speed_controller.pi_ctrl(speed_ref, self.u, self.int.dt, -550, 550)
-        ref_shaft_speed = ControllerLib.sat(ref_shaft_speed, 0, self.shaft_speed_max)
-        load_perc = self.shaft_speed_controller.pi_ctrl(ref_shaft_speed, self.omega, self.int.dt)
-        load_perc = ControllerLib.sat(load_perc, 0, 1.1)
-        return load_perc
-
-    def rudderang_from_headingref(self, heading_ref):
-        ''' This method finds a suitable rudder angle for the ship to
-            sail with the heading specified by "heading_ref" by using
-            PID-controller. The rudder angle is saturated according to
-            |self.rudder_ang_max|. The mathod should be called from within
-            simulation loop if the user want the ship to follow a specified
-            heading reference signal.
-        '''
-        rudder_ang = self.ship_heading_controller.pid_ctrl(heading_ref, self.psi, self.int.dt)
-        rudder_ang = ControllerLib.sat(rudder_ang, -self.rudder_ang_max, self.rudder_ang_max)
-        return rudder_ang
-
-    def rudderang_from_route(self):
-        ''' This method finds a suitable rudder angle for the ship to follow
-            a predefined route specified in the "navigate"-instantiation of the
-            "NavigationSystem"-class.
-        '''
-        self.next_wpt, self.prev_wpt = self.navigate.next_wpt(self.next_wpt, self.n, self.e)
-        psi_d = self.navigate.los_guidance(self.next_wpt, self.n, self.e)
-        return self.rudderang_from_headingref(psi_d)
-
-    def print_next_wpt(self, ship_id):
-        ''' Prints a string with the ship identification (ship_id)
-            and its next waypoint, if the next waypoint is specified
-        '''
-        if self.next_wpt != self.navigate.next_wpt(self.next_wpt, self.n, self.e)[0]:
-            print('Current target waypoint for ' + ship_id + ' is: ' + str(self.next_wpt))
-
-    def set_next_wpt(self, wpt):
-        ''' Sets the next waypoint to "wpt", where "wpt" is the index
-            of the waypoint refering to the list of waypoints making
-            up the route specified in the instantiation "navigate" of
-            the class "NavigationSystem"
-        '''
-        self.next_wpt = wpt
-
     def three_dof_kinematics(self):
         ''' Updates the time differientials of the north position, east
             position and yaw angle. Should be called in the simulation
             loop before the integration step.
         '''
-        vel = np.array([self.u, self.v, self.r])
+        vel = np.array([self.forward_speed, self.sideways_speed, self.yaw_rate])
         dx = np.dot(self.rotation(), vel)
-        self.d_n = dx[0]
-        self.d_e = dx[1]
-        self.d_psi = dx[2]
+        self.d_north = dx[0]
+        self.d_east = dx[1]
+        self.d_yaw = dx[2]
 
     def rotation(self):
         ''' Specifies the rotation matrix for rotations about the z-axis, such that
             "body-fixed coordinates" = rotation x "North-east-down-fixed coordinates" .
         '''
-        return np.array([[np.cos(self.psi), -np.sin(self.psi), 0],
-                         [np.sin(self.psi), np.cos(self.psi), 0],
+        return np.array([[np.cos(self.yaw_angle), -np.sin(self.yaw_angle), 0],
+                         [np.sin(self.yaw_angle), np.cos(self.yaw_angle), 0],
                          [0, 0, 1]])
 
-    def three_dof_kinetics(self, f_thrust, rudder_angle):
+    def mass_matrix(self):
+        return np.array([[self.mass + self.x_du, 0, 0],
+                         [0, self.mass + self.y_dv, self.mass * self.x_g],
+                         [0, self.mass * self.x_g, self.i_z + self.n_dr]])
+
+    def coriolis_matrix(self):
+        return np.array([[0, 0, -self.mass * (self.x_g * self.yaw_rate + self.sideways_speed)],
+                         [0, 0, self.mass * self.forward_speed],
+                         [self.mass * (self.x_g * self.yaw_rate + self.sideways_speed),
+                          -self.mass * self.forward_speed, 0]])
+
+    def coriolis_added_mass_matrix(self, u_r, v_r):
+        return np.array([[0, 0, self.y_dv * v_r],
+                        [0, 0, -self.x_du * u_r],
+                        [-self.y_dv * v_r, self.x_du * u_r, 0]])
+
+    def linear_damping_matrix(self):
+        return np.array([[self.mass / self.t_surge, 0, 0],
+                      [0, self.mass / self.t_sway, 0],
+                      [0, 0, self.i_z / self.t_yaw]])
+
+    def non_linear_damping_matrix(self):
+        return np.array([[self.ku * self.forward_speed, 0, 0],
+                       [0, self.kv * self.sideways_speed, 0],
+                       [0, 0, self.kr * self.yaw_rate]])
+
+    def three_dof_kinetics(self, *args, **kwargs):
         ''' Calculates accelerations of the ship, as a funciton
             of thrust-force, rudder angle, wind forces and the
             states in the previous time-step.
         '''
-        # System matrices (did not include added mass yet)
-        M_rb = np.array([[self.mass + self.x_du, 0, 0],
-                         [0, self.mass + self.y_dv, self.mass * self.x_g],
-                         [0, self.mass * self.x_g, self.i_z + self.n_dr]])
-        C_rb = np.array([[0, 0, -self.mass * (self.x_g * self.r + self.v)],
-                         [0, 0, self.mass * self.u],
-                         [self.mass * (self.x_g * self.r + self.v), -self.mass * self.u, 0]])
-
-        D = np.array([[self.mass / self.t_surge, 0, 0],
-                      [0, self.mass / self.t_sway, 0],
-                      [0, 0, self.i_z / self.t_yaw]])
-        D2 = np.array([[self.ku * self.u, 0, 0],
-                       [0, self.kv * self.v, 0],
-                       [0, 0, self.kr * self.r]])
-
-        # Forces acting (replace zero vectors with suitable functions)
-        f_rudder_v, f_rudder_r = self.rudder(rudder_angle)
-
-        F_wind = self.get_wind_force()
-        F_waves = np.array([0, 0, 0])
-        F_ctrl = np.array([f_thrust, f_rudder_v, f_rudder_r])
+        wind_force = self.get_wind_force()
+        wave_force = np.array([0, 0, 0])
 
         # assembling state vector
-        vel = np.array([self.u, self.v, self.r])
+        vel = np.array([self.forward_speed, self.sideways_speed, self.yaw_rate])
 
         # Transforming current velocity to ship frame
         v_c = np.dot(np.linalg.inv(self.rotation()), self.vel_c)
-        u_r = self.u - v_c[0]
-        v_r = self.v - v_c[1]
-
-        C_a = np.array([[0, 0, self.y_dv * v_r],
-                        [0, 0, -self.x_du * u_r],
-                        [-self.y_dv * v_r, self.x_du * u_r, 0]])
+        u_r = self.forward_speed - v_c[0]
+        v_r = self.sideways_speed - v_c[1]
 
         # Kinetic equation
-        M_inv = np.linalg.inv(M_rb)
-        dx = np.dot(M_inv, -np.dot(C_rb, vel) - np.dot(C_a, vel - v_c) - np.dot(D + D2, vel - v_c)
-                    + F_wind + F_waves + F_ctrl)
-        self.d_u = dx[0]
-        self.d_v = dx[1]
-        self.d_r = dx[2]
+        m_inv = np.linalg.inv(self.mass_matrix())
+        dx = np.dot(
+            m_inv,
+            -np.dot(self.coriolis_matrix(), vel)
+            - np.dot(self.coriolis_added_mass_matrix(u_r=u_r, v_r=v_r), vel - v_c)
+            - np.dot(self.linear_damping_matrix() + self.non_linear_damping_matrix(), vel - v_c)
+            + wind_force + wave_force
+        )
+        self.d_forward_speed = dx[0]
+        self.d_sideways_speed = dx[1]
+        self.d_yaw_rate = dx[2]
+
+    def update_differentials(self, *args, **kwargs):
+        ''' This method should be called in the simulation loop. It will
+            update the full differential equation of the ship.
+        '''
+        self.three_dof_kinematics()
+        self.three_dof_kinetics()
+
+    def integrate_differentials(self):
+        ''' Integrates the differential equation one time step ahead using
+            the euler intgration method with parameters set in the
+            int-instantiation of the "EulerInt"-class.
+        '''
+        self.north = self.int.integrate(x=self.north, dx=self.d_north)
+        self.east = self.int.integrate(x=self.east, dx=self.d_east)
+        self.yaw_angle = self.int.integrate(x=self.yaw_angle, dx=self.d_yaw)
+        self.forward_speed = self.int.integrate(x=self.forward_speed, dx=self.d_forward_speed)
+        self.sideways_speed = self.int.integrate(x=self.sideways_speed, dx=self.d_sideways_speed)
+        self.yaw_rate = self.int.integrate(x=self.yaw_rate, dx=self.d_yaw_rate)
+
+    def ship_snap_shot(self):
+        ''' This method is used to store a map-view snap shot of
+            the ship at the given north-east position and heading.
+            It uses the ShipDraw-class. To plot a map view of the
+            n-th ship snap-shot, use:
+
+            plot(ship_drawings[1][n], ship_drawings[0][n])
+        '''
+        x, y = self.drw.local_coords()
+        x_ned, y_ned = self.drw.rotate_coords(x, y, self.yaw_angle)
+        x_ned_trans, y_ned_trans = self.drw.translate_coords(x_ned, y_ned, self.north, self.east)
+        self.ship_drawings[0].append(x_ned_trans)
+        self.ship_drawings[1].append(y_ned_trans)
+
+
+class ShipModel(BaseShipModel):
+    ''' Creates a ship model object that can be used to simulate a ship in transit
+
+        The ships model is propelled by a single propeller and steered by a rudder.
+        The propeller is powered by either the main engine, an auxiliary motor
+        referred to as the hybrid shaft generator, or both. The model contains the
+        following states:
+        - North position of ship
+        - East position of ship
+        - Yaw angle (relative to north axis)
+        - Surge velocity (forward)
+        - Sway velocity (sideways)
+        - Yaw rate
+        - Propeller shaft speed
+
+        Simulation results are stored in the instance variable simulation_results
+    '''
+    def __init__(self, ship_config: ShipConfiguration, simulation_config: SimulationConfiguration,
+                 environment_config: EnvironmentConfiguration, machinery_config: MachinerySystemConfiguration,
+                 initial_propeller_shaft_speed_rad_per_s):
+        super().__init__(ship_config, simulation_config, environment_config)
+        self.ship_machinery_model = ShipMachineryModel(
+            machinery_config=machinery_config,
+            initial_propeller_shaft_speed_rad_per_sec=initial_propeller_shaft_speed_rad_per_s,
+            time_step=self.int.dt
+        )
+        self.simulation_results = defaultdict(list)
+
+    def three_dof_kinetics(self, thrust_force=None, rudder_angle=None, load_percentage=None, *args, **kwargs):
+        ''' Calculates accelerations of the ship, as a funciton
+            of thrust-force, rudder angle, wind forces and the
+            states in the previous time-step.
+        '''
+        # Forces acting (replace zero vectors with suitable functions)
+        f_rudder_v, f_rudder_r = self.rudder(rudder_angle)
+
+        wind_force = self.get_wind_force()
+        wave_force = np.array([0, 0, 0])
+        ctrl_force = np.array([thrust_force, f_rudder_v, f_rudder_r])
+
+        # assembling state vector
+        vel = np.array([self.forward_speed, self.sideways_speed, self.yaw_rate])
+
+        # Transforming current velocity to ship frame
+        v_c = np.dot(np.linalg.inv(self.rotation()), self.vel_c)
+        u_r = self.forward_speed - v_c[0]
+        v_r = self.sideways_speed - v_c[1]
+
+        # Kinetic equation
+        m_inv = np.linalg.inv(self.mass_matrix())
+        dx = np.dot(
+            m_inv,
+            -np.dot(self.coriolis_matrix(), vel)
+            - np.dot(self.coriolis_added_mass_matrix(u_r=u_r, v_r=v_r), vel - v_c)
+            - np.dot(self.linear_damping_matrix() + self.non_linear_damping_matrix(), vel - v_c)
+            + wind_force + wave_force + ctrl_force)
+        self.d_forward_speed = dx[0]
+        self.d_sideways_speed = dx[1]
+        self.d_yaw_rate = dx[2]
 
     def rudder(self, delta):
         ''' This method takes in the rudder angle and returns
@@ -679,136 +763,71 @@ class ShipModel:
             r_force (float): The yaw-torque generated by the rudder
         '''
         u_c = np.dot(np.linalg.inv(self.rotation()), self.vel_c)[0]
-        v_force = -self.c_rudder_v * delta * (self.u - u_c)
-        r_force = -self.c_rudder_r * delta * (self.u - u_c)
+        v_force = -self.ship_machinery_model.c_rudder_v * delta * (self.forward_speed - u_c)
+        r_force = -self.ship_machinery_model.c_rudder_r * delta * (self.forward_speed - u_c)
         return v_force, r_force
 
-    def shaft_eq(self, torque_main_engine, torque_hsg):
-        ''' Updates the time differential of the shaft speed
-            equation.
-        '''
-        eq_me = (torque_main_engine - self.d_me * self.omega) / self.r_me
-        eq_hsg = (torque_hsg - self.d_hsg * self.omega) / self.r_hsg
-        self.d_omega = (eq_me + eq_hsg - self.kp * self.omega ** 2) / self.jp
-
-    def thrust(self):
-        ''' Updates the thrust force based on the shaft speed (self.omega)
-        '''
-        return self.dp ** 4 * self.kt * self.omega * abs(self.omega)
-
-    def main_engine_torque(self, load_perc):
-        ''' Returns the torque of the main engine as a
-            function of the load percentage parameter
-        '''
-        # if self.omega >= 1 * np.pi / 30:
-        #    return load_perc * self.p_rel_rated_me / self.omega
-        # else:
-        #    return 0
-        #return min(load_perc * self.p_rel_rated_me / (self.omega + 0.1), self.p_rel_rated_me / 5 * np.pi / 30)
-        return min(load_perc * self.mode.available_propulsion_power_main_engine / (self.omega + 0.1),
-                   self.mode.available_propulsion_power_main_engine / 5 * np.pi / 30)
-
-    def hsg_torque(self, load_perc):
-        ''' Returns the torque of the HSG as a
-            function of the load percentage parameter
-        '''
-        # if self.omega >= 100 * np.pi / 30:
-        #    return load_perc * self.p_rel_rated_hsg / self.omega
-        # else:
-        #    return 0
-        # return min(load_perc * self.p_rel_rated_hsg / (self.omega + 0.1), self.p_rel_rated_hsg / 5 * np.pi / 30)
-        return min(load_perc * self.mode.available_propulsion_power_electrical / (self.omega + 0.1),
-                   self.mode.available_propulsion_power_electrical / 5 * np.pi / 30)
-
-    def update_differentials(self, load_perc, rudder_angle):
+    def update_differentials(self, engine_throttle=None, rudder_angle=None, *args, **kwargs):
         ''' This method should be called in the simulation loop. It will
             update the full differential equation of the ship.
         '''
         self.three_dof_kinematics()
-        self.shaft_eq(self.main_engine_torque(load_perc), self.hsg_torque(load_perc))
-        self.three_dof_kinetics(self.thrust(), rudder_angle)
+        self.ship_machinery_model.update_shaft_equation(engine_throttle)
+        self.three_dof_kinetics(thrust_force=self.ship_machinery_model.thrust(), rudder_angle=rudder_angle)
 
     def integrate_differentials(self):
         ''' Integrates the differential equation one time step ahead using
             the euler intgration method with parameters set in the
             int-instantiation of the "EulerInt"-class.
         '''
-        self.set_north_pos(self.int.integrate(self.n, self.d_n))
-        self.set_east_pos(self.int.integrate(self.e, self.d_e))
-        self.set_yaw_angle(self.int.integrate(self.psi, self.d_psi))
-        self.set_surge_speed(self.int.integrate(self.u, self.d_u))
-        self.set_sway_speed(self.int.integrate(self.v, self.d_v))
-        self.set_yaw_rate(self.int.integrate(self.r, self.d_r))
-        self.set_shaft_speed(self.int.integrate(self.omega, self.d_omega))
-
-    def store_states(self):
-        ''' Appends the current value of each state to an array. This
-            is convenient when plotting. The method should be called within
-            the simulation loop each time step. Then afterwars, an array
-            containing for ecample the north-position for each time step
-            is obtained as ...states[0]
-        '''
-        self.states[0].append(self.n)
-        self.states[1].append(self.e)
-        self.states[2].append(self.psi)
-        self.states[3].append(self.u)
-        self.states[4].append(self.v)
-        self.states[5].append(self.r)
-        self.states[6].append(self.omega)
-
-    def ship_snap_shot(self):
-        ''' This method is used to store a map-view snap shot of
-            the ship at the given north-east position and heading.
-            It uses the ShipDraw-class. To plot a map view of the
-            n-th ship snap-shot, use:
-
-            plot(ship_drawings[1][n], ship_drawings[0][n])
-        '''
-        x, y = self.drw.local_coords()
-        x_ned, y_ned = self.drw.rotate_coords(x, y, self.psi)
-        x_ned_trans, y_ned_trans = self.drw.translate_coords(x_ned, y_ned, self.n, self.e)
-        self.ship_drawings[0].append(x_ned_trans)
-        self.ship_drawings[1].append(y_ned_trans)
+        self.north = self.int.integrate(x=self.north, dx=self.d_north)
+        self.east = self.int.integrate(x=self.east, dx=self.d_east)
+        self.yaw_angle = self.int.integrate(x=self.yaw_angle, dx=self.d_yaw)
+        self.forward_speed = self.int.integrate(x=self.forward_speed, dx=self.d_forward_speed)
+        self.sideways_speed = self.int.integrate(x=self.sideways_speed, dx=self.d_sideways_speed)
+        self.yaw_rate = self.int.integrate(x=self.yaw_rate, dx=self.d_yaw_rate)
+        self.ship_machinery_model.integrate_differentials()
 
     def store_simulation_data(self, load_perc):
-        load_perc_me, load_perc_hsg = self.load_perc(load_perc)
+        load_perc_me, load_perc_hsg = self.ship_machinery_model.load_perc(load_perc)
         self.simulation_results['time [s]'].append(self.int.time)
-        self.simulation_results['north position [m]'].append(self.n)
-        self.simulation_results['east position [m]'].append(self.e)
-        self.simulation_results['yaw angle [deg]'].append(self.t_yaw * 180 / np.pi)
-        self.simulation_results['forward speed[m/s]'].append(self.u)
-        self.simulation_results['sideways speed [m/s]'].append(self.v)
-        self.simulation_results['yaw rate [deg/sec]'].append(self.r * 180 / np.pi)
-        self.simulation_results['propeller shaft speed [rpm]'].append(self.omega * 30 / np.pi)
-        self.simulation_results['commanded load fraction [-]'].append(load_perc)
+        self.simulation_results['north position [m]'].append(self.north)
+        self.simulation_results['east position [m]'].append(self.east)
+        self.simulation_results['yaw angle [deg]'].append(self.yaw_angle * 180 / np.pi)
+        self.simulation_results['forward speed[m/s]'].append(self.forward_speed)
+        self.simulation_results['sideways speed [m/s]'].append(self.sideways_speed)
+        self.simulation_results['yaw rate [deg/sec]'].append(self.yaw_rate * 180 / np.pi)
+        self.simulation_results['propeller shaft speed [rpm]'].append(self.ship_machinery_model.omega * 30 / np.pi)
         self.simulation_results['commanded load fraction me [-]'].append(load_perc_me)
         self.simulation_results['commanded load fraction hsg [-]'].append(load_perc_hsg)
 
-        load_data = self.mode.distribute_load(load_perc=load_perc, hotel_load=self.hotel_load)
+        load_data = self.ship_machinery_model.mode.distribute_load(
+            load_perc=load_perc, hotel_load=self.ship_machinery_model.hotel_load
+        )
         self.simulation_results['power me [kw]'].append(load_data.load_on_main_engine / 1000)
-        self.simulation_results['available power me [kw]'].append(self.mode.main_engine_capacity / 1000)
+        self.simulation_results['available power me [kw]'].append(
+            self.ship_machinery_model.mode.main_engine_capacity / 1000
+        )
         self.simulation_results['power electrical [kw]'].append(load_data.load_on_electrical / 1000)
-        self.simulation_results['available power electrical [kw]'].append(self.mode.electrical_capacity / 1000)
+        self.simulation_results['available power electrical [kw]'].append(
+            self.ship_machinery_model.mode.electrical_capacity / 1000
+        )
         self.simulation_results['power [kw]'].append((load_data.load_on_electrical
                                                       + load_data.load_on_main_engine) / 1000)
-        self.simulation_results['propulsion power [kw]'].append((load_perc
-                                                                 * self.mode.available_propulsion_power) / 1000)
-
-        rate_me, rate_hsg, cons_me, cons_hsg, cons = self.fuel_consumption(load_perc)
+        self.simulation_results['propulsion power [kw]'].append(
+            (load_perc * self.ship_machinery_model.mode.available_propulsion_power) / 1000)
+        rate_me, rate_hsg, cons_me, cons_hsg, cons = self.ship_machinery_model.fuel_consumption(load_perc)
         self.simulation_results['fuel rate me [kg/s]'].append(rate_me)
         self.simulation_results['fuel rate hsg [kg/s]'].append(rate_hsg)
         self.simulation_results['fuel rate [kg/s]'].append(rate_me + rate_hsg)
         self.simulation_results['fuel consumption me [kg]'].append(cons_me)
         self.simulation_results['fuel consumption hsg [kg]'].append(cons_hsg)
         self.simulation_results['fuel consumption [kg]'].append(cons)
-        self.simulation_results['motor torque [Nm]'].append(self.main_engine_torque(load_perc))
-        self.simulation_results['thrust force [kN]'].append(self.thrust() / 1000)
-        self.fuel_me.append(cons_me)
-        self.fuel_hsg.append(cons_hsg)
-        self.fuel.append(cons)
+        self.simulation_results['motor torque [Nm]'].append(self.ship_machinery_model.main_engine_torque(load_perc))
+        self.simulation_results['thrust force [kN]'].append(self.ship_machinery_model.thrust() / 1000)
 
 
-class ShipModelSimplifiedPropulsion:
+class ShipModelSimplifiedPropulsion(BaseShipModel):
     ''' Creates a ship model object that can be used to simulate a ship in transit
 
         The ships model is propelled by a single propeller and steered by a rudder.
@@ -829,460 +848,58 @@ class ShipModelSimplifiedPropulsion:
     def __init__(self, ship_config: ShipConfiguration,
                  machinery_config: SimplifiedPropulsionMachinerySystemConfiguration,
                  environment_config: EnvironmentConfiguration,
-                 simulation_config: SimplifiedPropulsionSimulationConfiguration):
-        route_name = simulation_config.route_name
-        if route_name != 'none':
-            # Route following
-            self.navigate = NavigationSystem(route_name)
-            self.next_wpt = 1
-            self.prev_wpt = 0
+                 simulation_config: SimulationConfiguration):
 
-        payload = 0.9 * (ship_config.dead_weight_tonnage - ship_config.bunkers)
-        lsw = ship_config.dead_weight_tonnage / ship_config.coefficient_of_deadweight_to_displacement \
-              - ship_config.dead_weight_tonnage
-        self.mass = lsw + payload + ship_config.bunkers + ship_config.ballast
-
-        self.l_ship = ship_config.length_of_ship  # 80
-        self.w_ship = ship_config.width_of_ship  # 16.0
-        self.x_g = 0
-        self.i_z = self.mass * (self.l_ship ** 2 + self.w_ship ** 2) / 12
-
-        # zero-frequency added mass
-        self.x_du, self.y_dv, self.n_dr = self.set_added_mass(ship_config.added_mass_coefficient_in_surge,
-                                                              ship_config.added_mass_coefficient_in_sway,
-                                                              ship_config.added_mass_coefficient_in_yaw)
-
-        self.t_surge = ship_config.mass_over_linear_friction_coefficient_in_surge
-        self.t_sway = ship_config.mass_over_linear_friction_coefficient_in_sway
-        self.t_yaw = ship_config.mass_over_linear_friction_coefficient_in_yaw
-        self.ku = ship_config.nonlinear_friction_coefficient__in_surge  # 2400.0  # non-linear friction coeff in surge
-        self.kv = ship_config.nonlinear_friction_coefficient__in_sway  # 4000.0  # non-linear friction coeff in sway
-        self.kr = ship_config.nonlinear_friction_coefficient__in_yaw  # 400.0  # non-linear friction coeff in yaw
+        super().__init__(ship_config, simulation_config, environment_config)
 
         # Machinery system params
-        self.machinery_modes = machinery_config.machinery_modes
-        self.hotel_load = machinery_config.hotel_load  # 200000  # 0.2 MW
-        self.update_available_propulsion_power()
-        mode = simulation_config.machinery_system_operating_mode
-        self.mode = self.machinery_modes.list_of_modes[mode]
-
-        self.thrust = simulation_config.initial_thrust_force
-        self.d_thrust = 0
-        self.k_thrust = 2160 / 790
-        self.thrust_time_constant = machinery_config.thrust_force_dynamic_time_constant
-
-        self.c_rudder_v = machinery_config.rudder_angle_to_sway_force_coefficient
-        self.c_rudder_r = machinery_config.rudder_angle_to_yaw_force_coefficient  # 500000.0  # tuning param for simplified rudder response model
-        self.rudder_ang_max = machinery_config.max_rudder_angle_degrees * np.pi / 180  # 30 * np.pi / 180  # Maximal rudder angle deflection (both ways)
-
-        # Environmental conditions
-        self.vel_c = np.array([environment_config.current_velocity_component_from_north,
-                               environment_config.current_velocity_component_from_east,
-                               0.0])
-        self.wind_dir = environment_config.wind_direction
-        self.wind_speed = environment_config.wind_speed
-
-        # Operational parameters used to calculate loading percent on each power source
-        self.p_rel_rated_hsg = 0.0
-        self.p_rel_rated_me = 0.0
-
-        # Configure machinery system according to self.mso
-        #self.mso_mode = simulation_config.machinery_system_operating_mode
-        #self.mode_selector(machinery_config.mcr_main_engine,
-        #                   machinery_config.mcr_hybrid_shaft_generator)
-
-        # Initial states (can be altered using self.set_state_vector(x))
-        self.n = simulation_config.initial_north_position_m
-        self.e = simulation_config.initial_east_position_m
-        self.psi = simulation_config.initial_yaw_angle_rad
-        self.u = simulation_config.initial_forward_speed_m_per_s
-        self.v = simulation_config.initial_sideways_speed_m_per_s
-        self.r = simulation_config.initial_yaw_rate_rad_per_s
-        self.x = self.update_state_vector()
-        self.states = np.empty(7)
-
-        # Differentials
-        self.d_n = self.d_e = self.d_psi = 0
-        self.d_u = self.d_v = self.d_r = 0
-
-        # Set up ship control systems
-        self.initialize_ship_speed_controller(kp=7, ki=0.13)
-        self.initialize_ship_heading_controller(kp=4, kd=90, ki=0.005)
-        self.initialize_heading_filter(kp=0.5, kd=10, t=5000)
-
-        # Set up integration
-        self.int = EulerInt()  # Instantiate the Euler integrator
-        self.int.set_dt(simulation_config.integration_step)
-        self.int.set_sim_time(simulation_config.simulation_time)
-
-        # Instantiate ship draw plotting
-        self.drw = ShipDraw()  # Instantiate the ship drawing class
-        self.ship_drawings = [[], []]  # Arrays for storing ship drawing data
-
-        # Fuel
-        self.fuel_cons_me = 0.0  # Initial fuel cons for ME
-        self.fuel_cons_electrical = 0.0  # Initial fuel cons for HSG
-        self.fuel_cons = 0.0  # Initial total fuel cons
-        self.power_me = []  # Array for storing ME power cons. data
-        self.power_hsg = []  # Array for storing HSG power cons. data
-        self.me_rated = []  # Array for storing ME rated power data
-        self.hsg_rated = []  # Array for storing HSG rated power data
-        self.load_hist = []  # Array for storing load percentage history
-        self.fuel_rate_me = []  # Array for storing ME fuel cons. rate
-        self.fuel_rate_hsg = []  # Array for storing HSG fuel cons. rate
-        self.fuel_me = []  # Array for storing ME fuel cons.
-        self.fuel_hsg = []  # Array for storing HSG fuel cons.
-        self.fuel = []  # Array for storing total fuel cons
-        self.fuel_rate = []
-        self.load_perc_me = []
-        self.load_perc_hsg = []
-        self.power_total = []
-        self.power_prop = []
-
-        # Wind effect on ship
-        self.rho_a = 1.2
-        self.h_f = 8.0  # mean height above water seen from the front
-        self.h_s = 8.0  # mean height above water seen from the side
-        self.proj_area_f = self.w_ship * self.h_f  # Projected are from the front
-        self.proj_area_l = self.l_ship * self.h_s  # Projected area from the side
-        self.cx = 0.5
-        self.cy = 0.7
-        self.cn = 0.08
-
-        # Fuel consumption function parameters
-        self.a_me = 128.89
-        self.b_me = -168.93
-        self.c_me = 246.76
-
-        self.a_dg = 180.71
-        self.b_dg = -289.90
-        self.c_dg = 324.90
+        rudder_config = RudderConfiguration(
+            rudder_angle_to_sway_force_coefficient=machinery_config.rudder_angle_to_sway_force_coefficient,
+            rudder_angle_to_yaw_force_coefficient=machinery_config.rudder_angle_to_yaw_force_coefficient,
+            max_rudder_angle_degrees=machinery_config.max_rudder_angle_degrees
+        )
+        self.ship_machinery_model = SimplifiedMachineryModel(
+            machinery_config=machinery_config,
+            time_step=simulation_config.integration_step,
+            initial_thrust_force=0
+        )
 
         self.simulation_results = defaultdict(list)
 
-    def update_available_propulsion_power(self):
-        for mode in self.machinery_modes.list_of_modes:
-            mode.update_available_propulsion_power(self.hotel_load)
-
-    def set_added_mass(self, surge_coeff, sway_coeff, yaw_coeff):
-        ''' Sets the added mass in surge due to surge motion, sway due
-            to sway motion and yaw due to yaw motion according to given coeffs.
-
-            args:
-                surge_coeff (float): Added mass coefficient in surge direction due to surge motion
-                sway_coeff (float): Added mass coefficient in sway direction due to sway motion
-                yaw_coeff (float): Added mass coefficient in yaw direction due to yaw motion
-            returns:
-                x_du (float): Added mass in surge
-                y_dv (float): Added mass in sway
-                n_dr (float): Added mass in yaw
-        '''
-        x_du = self.mass * surge_coeff
-        y_dv = self.mass * sway_coeff
-        n_dr = self.i_z * yaw_coeff
-        return x_du, y_dv, n_dr
-
-    def mode_selector(self, mode: int):
-        self.mode = self.machinery_modes.list_of_modes[mode]
-
-    def spec_fuel_cons_me(self, load_perc):
-        """ Calculate fuel consumption rate for the main engine.
-
-            Args:
-                load_perc (float): The fraction of the mcr load on the ME
-            Returns:
-                Number of kilograms of fuel per second used by ME
-        """
-        rate = self.a_me * load_perc ** 2 + self.b_me * load_perc + self.c_me
-        return rate / 3.6e9
-
-    def spec_fuel_cons_dg(self, load_perc):
-        """ Calculate fuel consumption rate for a diesel generator.
-
-            Args:
-                load_perc (float): The fraction of the mcr load on the DG
-            Returns:
-                Number of kilograms of fuel per second used by DG
-        """
-        rate = self.a_dg * load_perc ** 2 + self.b_dg * load_perc + self.c_dg
-        return rate / 3.6e9
-
-    def load_perc(self, load_perc):
-        """ Calculates the load percentage on the main engine and the diesel_gens based on the
-            operating mode of the machinery system (MSO-mode).
-
-            Args:
-                load_perc (float): Current load on the machinery system as a fraction of the
-                    total power that can be delivered by the machinery system in the current mode.
-            Returns:
-                load_perc_me (float): Current load on the ME as a fraction of ME MCR
-                load_perc_hsg (float): Current load on the HSG as a fraction of HSG MCR
-        """
-        load_data = self.mode.distribute_load(load_perc=load_perc, hotel_load=self.hotel_load)
-        return load_data.load_percentage_on_main_engine, load_data.load_percentage_on_electrical
-
-    def fuel_consumption(self, load_perc):
-        '''
-            Args:
-                load_perc (float): The fraction of produced power over the online power production capacity.
-            Returns:
-                rate_me (float): Fuel consumption rate for the main engine
-                rate_hsg (float): Fuel consumption rate for the HSG
-                fuel_cons_me (float): Accumulated fuel consumption for the ME
-                fuel_cons_hsg (float): Accumulated fuel consumption for the HSG
-                fuel_cons (float): Total accumulated fuel consumption for the ship
-        '''
-        '''
-        if self.mso_mode == 1:
-            load_me = load_perc * self.p_rated_me + self.hotel_load
-            load_perc_me = load_me / self.p_rated_me
-            rate_me = load_me * self.spec_fuel_cons_me(load_perc_me)
-            rate_hsg = 0.0
-        elif self.mso_mode == 2:
-            load_me = load_perc * self.p_rated_me
-            load_perc_me = load_me / self.p_rated_me
-            load_hsg = self.hotel_load
-            load_perc_hsg = load_hsg / self.p_rated_hsg
-            rate_me = load_me * self.spec_fuel_cons_me(load_perc_me)
-            rate_hsg = load_hsg * self.spec_fuel_cons_dg(load_perc_hsg)
-        elif self.mso_mode == 3:
-            load_hsg = (load_perc * self.p_rated_hsg + self.hotel_load)
-            load_perc_hsg = load_hsg / self.p_rated_hsg
-            rate_me = 0.0
-            rate_hsg = load_hsg * self.spec_fuel_cons_dg(load_perc_hsg)
-        '''
-        load_data = self.mode.distribute_load(load_perc=load_perc, hotel_load=self.hotel_load)
-        if load_data.load_on_main_engine == 0:
-            rate_me = 0
-        else:
-            rate_me = load_data.load_on_main_engine \
-                      * self.spec_fuel_cons_me(load_data.load_percentage_on_main_engine)
-
-        if load_data.load_percentage_on_electrical == 0:
-            rate_electrical = 0
-        else:
-            rate_electrical = load_data.load_on_electrical \
-                              * self.spec_fuel_cons_dg(load_data.load_percentage_on_electrical)
-
-        self.fuel_cons_me = self.fuel_cons_me + rate_me * self.int.dt
-        self.fuel_cons_electrical = self.fuel_cons_electrical + rate_electrical * self.int.dt
-        self.fuel_cons = self.fuel_cons + (rate_me + rate_electrical) * self.int.dt
-        return rate_me, rate_electrical, self.fuel_cons_me, self.fuel_cons_electrical, self.fuel_cons
-
-    def get_wind_force(self):
-        ''' This method calculates the forces due to the relative
-            wind speed, acting on teh ship in surge, sway and yaw
-            direction.
-
-            :return: Wind force acting in surge, sway and yaw
-        '''
-        uw = self.wind_speed * np.cos(self.wind_dir - self.psi)
-        vw = self.wind_speed * np.sin(self.wind_dir - self.psi)
-        u_rw = uw - self.u
-        v_rw = vw - self.v
-        gamma_rw = -np.arctan2(v_rw, u_rw)
-        wind_rw2 = u_rw ** 2 + v_rw ** 2
-        c_x = -self.cx * np.cos(gamma_rw)
-        c_y = self.cy * np.sin(gamma_rw)
-        c_n = self.cn * np.sin(2 * gamma_rw)
-        tau_coeff = 0.5 * self.rho_a * wind_rw2
-        tau_u = tau_coeff * c_x * self.proj_area_f
-        tau_v = tau_coeff * c_y * self.proj_area_l
-        tau_n = tau_coeff * c_n * self.proj_area_l * self.l_ship
-        return np.array([tau_u, tau_v, tau_n])
-
-    def update_state_vector(self):
-        ''' Update the state vector according to the individual state values
-        '''
-        return np.array([self.n, self.e, self.psi, self.u, self.v, self.r])
-
-    def set_north_pos(self, val):
-        ''' Set the north position of the ship and update the state vector
-        '''
-        self.n = val
-        self.x = self.update_state_vector()
-
-    def set_east_pos(self, val):
-        ''' Set the east position of the ship and update the state vector
-        '''
-        self.e = val
-        self.x = self.update_state_vector()
-
-    def set_yaw_angle(self, val):
-        ''' Set the yaw angle of the ship and update the state vector
-        '''
-        self.psi = val
-        self.x = self.update_state_vector()
-
-    def set_surge_speed(self, val):
-        ''' Set the surge speed of the ship and update the state vector
-        '''
-        self.u = val
-        self.x = self.update_state_vector()
-
-    def set_sway_speed(self, val):
-        ''' Set the sway speed of the ship and update the state vector
-        '''
-        self.v = val
-        self.x = self.update_state_vector()
-
-    def set_yaw_rate(self, val):
-        ''' Set the yaw rate of the ship and update the state vector
-        '''
-        self.r = val
-        self.x = self.update_state_vector()
-
-    def initialize_shaft_speed_controller(self, kp, ki):
-        ''' This method sets up and configures the shaft speed
-            controller of the ship
-        '''
-        self.shaft_speed_controller = ControllerLib()
-        self.shaft_speed_controller.set_kp(kp)
-        self.shaft_speed_controller.set_ki(ki)
-
-    def initialize_ship_speed_controller(self, kp, ki):
-        ''' This method sets up and configures the ship speed
-            controller.
-        '''
-        self.ship_speed_controller = ControllerLib()
-        self.ship_speed_controller.set_kp(kp)
-        self.ship_speed_controller.set_ki(ki)
-
-    def initialize_ship_heading_controller(self, kp, kd, ki):
-        ''' This method sets up and configures the ship heading
-            controller.
-        '''
-        self.ship_heading_controller = ControllerLib()
-        self.ship_heading_controller.set_kp(kp)
-        self.ship_heading_controller.set_kd(-kd)
-        self.ship_heading_controller.set_ki(ki)
-
-    def initialize_heading_filter(self, kp, kd, t):
-        ''' This method sets up and configures a low pass filter
-            to smooth the hading setpoint signal for the ship
-            heading controller.
-        '''
-        self.ship_heading_filter = ControllerLib()
-        self.ship_heading_filter.set_kp(kp)
-        self.ship_heading_filter.set_kd(kd)
-        self.ship_heading_filter.set_T(t)
-
-    def loadperc_from_speedref(self, speed_ref):
-        ''' Calculates suitable machinery load percentage for the ship to
-            track the speed reference signal. The shaft speed controller
-            is used to calculate suitable shaft speed to follow the desired
-            ship speed and suitable load percentage to follow the calculated
-            shaft speed. The load percentage is the fraction of the produced
-            power over the total power capacity in the current configuration.
-        '''
-        ref_shaft_speed = self.ship_speed_controller.pi_ctrl(speed_ref, self.u, self.int.dt, -550, 550)
-        ref_shaft_speed = ControllerLib.sat(ref_shaft_speed, 0, self.shaft_speed_max)
-        load_perc = self.shaft_speed_controller.pi_ctrl(ref_shaft_speed, self.omega, self.int.dt)
-        load_perc = ControllerLib.sat(load_perc, 0, 1.1)
-        return load_perc
-
-    def rudderang_from_headingref(self, heading_ref):
-        ''' This method finds a suitable rudder angle for the ship to
-            sail with the heading specified by "heading_ref" by using
-            PID-controller. The rudder angle is saturated according to
-            |self.rudder_ang_max|. The mathod should be called from within
-            simulation loop if the user want the ship to follow a specified
-            heading reference signal.
-        '''
-        rudder_ang = self.ship_heading_controller.pid_ctrl(heading_ref, self.psi, self.int.dt)
-        rudder_ang = ControllerLib.sat(rudder_ang, -self.rudder_ang_max, self.rudder_ang_max)
-        return rudder_ang
-
-    def rudderang_from_route(self):
-        ''' This method finds a suitable rudder angle for the ship to follow
-            a predefined route specified in the "navigate"-instantiation of the
-            "NavigationSystem"-class.
-        '''
-        self.next_wpt, self.prev_wpt = self.navigate.next_wpt(self.next_wpt, self.n, self.e)
-        psi_d = self.navigate.los_guidance(self.next_wpt, self.n, self.e)
-        return self.rudderang_from_headingref(psi_d)
-
-    def print_next_wpt(self, ship_id):
-        ''' Prints a string with the ship identification (ship_id)
-            and its next waypoint, if the next waypoint is specified
-        '''
-        if self.next_wpt != self.navigate.next_wpt(self.next_wpt, self.n, self.e)[0]:
-            print('Current target waypoint for ' + ship_id + ' is: ' + str(self.next_wpt))
-
-    def set_next_wpt(self, wpt):
-        ''' Sets the next waypoint to "wpt", where "wpt" is the index
-            of the waypoint refering to the list of waypoints making
-            up the route specified in the instantiation "navigate" of
-            the class "NavigationSystem"
-        '''
-        self.next_wpt = wpt
-
-    def three_dof_kinematics(self):
-        ''' Updates the time differientials of the north position, east
-            position and yaw angle. Should be called in the simulation
-            loop before the integration step.
-        '''
-        vel = np.array([self.u, self.v, self.r])
-        dx = np.dot(self.rotation(), vel)
-        self.d_n = dx[0]
-        self.d_e = dx[1]
-        self.d_psi = dx[2]
-
-    def rotation(self):
-        ''' Specifies the rotation matrix for rotations about the z-axis, such that
-            "body-fixed coordinates" = rotation x "North-east-down-fixed coordinates" .
-        '''
-        return np.array([[np.cos(self.psi), -np.sin(self.psi), 0],
-                         [np.sin(self.psi), np.cos(self.psi), 0],
-                         [0, 0, 1]])
-
-    def three_dof_kinetics(self, load_perc, rudder_angle):
+    def three_dof_kinetics(self, thrust_force=None, load_percentage=None, rudder_angle=None, *args, **kwargs):
         ''' Calculates accelerations of the ship, as a funciton
             of thrust-force, rudder angle, wind forces and the
             states in the previous time-step.
         '''
-        # System matrices (did not include added mass yet)
-        M_rb = np.array([[self.mass + self.x_du, 0, 0],
-                         [0, self.mass + self.y_dv, self.mass * self.x_g],
-                         [0, self.mass * self.x_g, self.i_z + self.n_dr]])
-        C_rb = np.array([[0, 0, -self.mass * (self.x_g * self.r + self.v)],
-                         [0, 0, self.mass * self.u],
-                         [self.mass * (self.x_g * self.r + self.v), -self.mass * self.u, 0]])
-
-        D = np.array([[self.mass / self.t_surge, 0, 0],
-                      [0, self.mass / self.t_sway, 0],
-                      [0, 0, self.i_z / self.t_yaw]])
-        D2 = np.array([[self.ku * self.u, 0, 0],
-                       [0, self.kv * self.v, 0],
-                       [0, 0, self.kr * self.r]])
-
         # Forces acting (replace zero vectors with suitable functions)
         f_rudder_v, f_rudder_r = self.rudder(rudder_angle)
-        self.update_thrust(load_perc)
 
-        F_wind = self.get_wind_force()
-        F_waves = np.array([0, 0, 0])
-        F_ctrl = np.array([self.thrust, f_rudder_v, f_rudder_r])
+        wind_force = self.get_wind_force()
+        wave_force = np.array([0, 0, 0])
+
+        ctrl_force = np.array(
+            [thrust_force, f_rudder_v, f_rudder_r]
+        )
 
         # assembling state vector
-        vel = np.array([self.u, self.v, self.r])
+        vel = np.array([self.forward_speed, self.sideways_speed, self.yaw_rate])
 
         # Transforming current velocity to ship frame
         v_c = np.dot(np.linalg.inv(self.rotation()), self.vel_c)
-        u_r = self.u - v_c[0]
-        v_r = self.v - v_c[1]
-
-        C_a = np.array([[0, 0, self.y_dv * v_r],
-                        [0, 0, -self.x_du * u_r],
-                        [-self.y_dv * v_r, self.x_du * u_r, 0]])
+        u_r = self.forward_speed - v_c[0]
+        v_r = self.sideways_speed - v_c[1]
 
         # Kinetic equation
-        M_inv = np.linalg.inv(M_rb)
-        dx = np.dot(M_inv, -np.dot(C_rb, vel) - np.dot(C_a, vel - v_c) - np.dot(D + D2, vel - v_c)
-                    + F_wind + F_waves + F_ctrl)
-        self.d_u = dx[0]
-        self.d_v = dx[1]
-        self.d_r = dx[2]
+        m_inv = np.linalg.inv(self.mass_matrix())
+        dx = np.dot(
+            m_inv,
+            -np.dot(self.coriolis_matrix(), vel)
+            - np.dot(self.coriolis_added_mass_matrix(u_r=u_r, v_r=v_r), vel - v_c)
+            - np.dot(self.linear_damping_matrix() + self.non_linear_damping_matrix(), vel - v_c)
+            + wind_force + wave_force + ctrl_force)
+        self.d_forward_speed = dx[0]
+        self.d_sideways_speed = dx[1]
+        self.d_yaw_rate = dx[2]
 
     def rudder(self, delta):
         ''' This method takes in the rudder angle and returns
@@ -1296,104 +913,75 @@ class ShipModelSimplifiedPropulsion:
             r_force (float): The yaw-torque generated by the rudder
         '''
         u_c = np.dot(np.linalg.inv(self.rotation()), self.vel_c)[0]
-        v_force = -self.c_rudder_v * delta * (self.u - u_c)
-        r_force = -self.c_rudder_r * delta * (self.u - u_c)
+        v_force = -self.ship_machinery_model.c_rudder_v * delta * (self.forward_speed - u_c)
+        r_force = -self.ship_machinery_model.c_rudder_r * delta * (self.forward_speed - u_c)
         return v_force, r_force
 
-    def update_thrust(self, load_perc):
-        ''' Updates the thrust force based on engine power
-        '''
-        power = load_perc * (self.mode.available_propulsion_power_main_engine
-                             + self.mode.available_propulsion_power_electrical)
-        self.d_thrust = (-self.k_thrust * self.thrust + power) / self.thrust_time_constant
-
-        self.thrust = self.thrust + self.int.dt * self.d_thrust
-
-    def update_differentials(self, load_perc, rudder_angle):
+    def update_differentials(self, engine_throttle=None, rudder_angle=None, *args, **kwargs):
         ''' This method should be called in the simulation loop. It will
             update the full differential equation of the ship.
         '''
         self.three_dof_kinematics()
-        self.three_dof_kinetics(load_perc=load_perc, rudder_angle=rudder_angle)
+        self.ship_machinery_model.update_thrust_force(load_perc=engine_throttle)
+        self.three_dof_kinetics(thrust_force=self.ship_machinery_model.thrust, rudder_angle=rudder_angle)
 
     def integrate_differentials(self):
         ''' Integrates the differential equation one time step ahead using
             the euler intgration method with parameters set in the
             int-instantiation of the "EulerInt"-class.
         '''
-        self.set_north_pos(self.int.integrate(self.n, self.d_n))
-        self.set_east_pos(self.int.integrate(self.e, self.d_e))
-        self.set_yaw_angle(self.int.integrate(self.psi, self.d_psi))
-        self.set_surge_speed(self.int.integrate(self.u, self.d_u))
-        self.set_sway_speed(self.int.integrate(self.v, self.d_v))
-        self.set_yaw_rate(self.int.integrate(self.r, self.d_r))
-
-    def store_states(self):
-        ''' Appends the current value of each state to an array. This
-            is convenient when plotting. The method should be called within
-            the simulation loop each time step. Then afterwars, an array
-            containing for ecample the north-position for each time step
-            is obtained as ...states[0]
-        '''
-        self.states[0].append(self.n)
-        self.states[1].append(self.e)
-        self.states[2].append(self.psi)
-        self.states[3].append(self.u)
-        self.states[4].append(self.v)
-        self.states[5].append(self.r)
-        self.states[6].append(self.omega)
-
-    def ship_snap_shot(self):
-        ''' This method is used to store a map-view snap shot of
-            the ship at the given north-east position and heading.
-            It uses the ShipDraw-class. To plot a map view of the
-            n-th ship snap-shot, use:
-
-            plot(ship_drawings[1][n], ship_drawings[0][n])
-        '''
-        x, y = self.drw.local_coords()
-        x_ned, y_ned = self.drw.rotate_coords(x, y, self.psi)
-        x_ned_trans, y_ned_trans = self.drw.translate_coords(x_ned, y_ned, self.n, self.e)
-        self.ship_drawings[0].append(x_ned_trans)
-        self.ship_drawings[1].append(y_ned_trans)
+        self.north = self.int.integrate(x=self.north, dx=self.d_north)
+        self.east = self.int.integrate(x=self.east, dx=self.d_east)
+        self.yaw_angle = self.int.integrate(x=self.yaw_angle, dx=self.d_yaw)
+        self.forward_speed = self.int.integrate(x=self.forward_speed, dx=self.d_forward_speed)
+        self.sideways_speed = self.int.integrate(x=self.sideways_speed, dx=self.d_sideways_speed)
+        self.yaw_rate = self.int.integrate(x=self.yaw_rate, dx=self.d_yaw_rate)
+        self.ship_machinery_model.integrate_differentials()
 
     def store_simulation_data(self, load_perc):
-        load_perc_me, load_perc_hsg = self.load_perc(load_perc)
+        load_perc_me, load_perc_hsg = self.ship_machinery_model.load_perc(load_perc)
         self.simulation_results['time [s]'].append(self.int.time)
-        self.simulation_results['north position [m]'].append(self.n)
-        self.simulation_results['east position [m]'].append(self.e)
-        self.simulation_results['yaw angle [deg]'].append(self.t_yaw * 180 / np.pi)
-        self.simulation_results['forward speed[m/s]'].append(self.u)
-        self.simulation_results['sideways speed [m/s]'].append(self.v)
-        self.simulation_results['yaw rate [deg/sec]'].append(self.r * 180 / np.pi)
+        self.simulation_results['north position [m]'].append(self.north)
+        self.simulation_results['east position [m]'].append(self.east)
+        self.simulation_results['yaw angle [deg]'].append(self.yaw_angle * 180 / np.pi)
+        self.simulation_results['forward speed[m/s]'].append(self.forward_speed)
+        self.simulation_results['sideways speed [m/s]'].append(self.sideways_speed)
+        self.simulation_results['yaw rate [deg/sec]'].append(self.yaw_rate * 180 / np.pi)
         self.simulation_results['commanded load fraction [-]'].append(load_perc)
         self.simulation_results['commanded load fraction me [-]'].append(load_perc_me)
         self.simulation_results['commanded load fraction hsg [-]'].append(load_perc_hsg)
 
-        load_data = self.mode.distribute_load(load_perc=load_perc, hotel_load=self.hotel_load)
+        load_data = self.ship_machinery_model.mode.distribute_load(
+            load_perc=load_perc, hotel_load=self.ship_machinery_model.hotel_load
+        )
         self.simulation_results['power me [kw]'].append(load_data.load_on_main_engine / 1000)
-        self.simulation_results['available power me [kw]'].append(self.mode.main_engine_capacity / 1000)
+        self.simulation_results['available power me [kw]'].append(
+            self.ship_machinery_model.mode.main_engine_capacity / 1000
+        )
         self.simulation_results['power electrical [kw]'].append(load_data.load_on_electrical / 1000)
-        self.simulation_results['available power electrical [kw]'].append(self.mode.electrical_capacity / 1000)
+        self.simulation_results['available power electrical [kw]'].append(
+            self.ship_machinery_model.mode.electrical_capacity / 1000
+        )
         self.simulation_results['power [kw]'].append((load_data.load_on_electrical
                                                       + load_data.load_on_main_engine) / 1000)
-        self.simulation_results['propulsion power [kw]'].append((load_perc
-                                                                 * self.mode.available_propulsion_power) / 1000)
+        self.simulation_results['propulsion power [kw]'].append(
+            (load_perc * self.ship_machinery_model.mode.available_propulsion_power) / 1000
+        )
 
-        rate_me, rate_hsg, cons_me, cons_hsg, cons = self.fuel_consumption(load_perc)
+        rate_me, rate_hsg, cons_me, cons_hsg, cons = self.ship_machinery_model.fuel_consumption(load_perc)
         self.simulation_results['fuel rate me [kg/s]'].append(rate_me)
         self.simulation_results['fuel rate hsg [kg/s]'].append(rate_hsg)
         self.simulation_results['fuel rate [kg/s]'].append(rate_me + rate_hsg)
         self.simulation_results['fuel consumption me [kg]'].append(cons_me)
         self.simulation_results['fuel consumption hsg [kg]'].append(cons_hsg)
         self.simulation_results['fuel consumption [kg]'].append(cons)
-        self.fuel_me.append(cons_me)
-        self.fuel_hsg.append(cons_hsg)
-        self.fuel.append(cons)
-        self.simulation_results['thrust force [kN]'].append(self.thrust / 1000)
+        self.ship_machinery_model.fuel_me.append(cons_me)
+        self.ship_machinery_model.fuel_hsg.append(cons_hsg)
+        self.ship_machinery_model.fuel.append(cons)
+        self.simulation_results['thrust force [kN]'].append(self.ship_machinery_model.thrust / 1000)
 
 
-class ShipModelWithoutPropulsion:
+class ShipModelWithoutPropulsion(BaseShipModel):
     ''' Creates a ship model object that can be used to simulate a ship drifting freely
 
         The model contains the following states:
@@ -1407,367 +995,41 @@ class ShipModelWithoutPropulsion:
         Simulation results are stored in the instance variable simulation_results
     '''
 
-    def __init__(self, ship_config: ShipConfiguration,
-                 environment_config: EnvironmentConfiguration,
-                 simulation_config: DriftSimulationConfiguration):
-        payload = 0.9 * (ship_config.dead_weight_tonnage - ship_config.bunkers)
-        lsw = ship_config.dead_weight_tonnage / ship_config.coefficient_of_deadweight_to_displacement \
-              - ship_config.dead_weight_tonnage
-        self.mass = lsw + payload + ship_config.bunkers + ship_config.ballast
+    def __init__(self, ship_config: ShipConfiguration, environment_config: EnvironmentConfiguration,
+                 simulation_config: SimulationConfiguration):
 
-        self.l_ship = ship_config.length_of_ship  # 80
-        self.w_ship = ship_config.width_of_ship  # 16.0
-        self.x_g = 0
-        self.i_z = self.mass * (self.l_ship ** 2 + self.w_ship ** 2) / 12
-
-        # zero-frequency added mass
-        self.x_du, self.y_dv, self.n_dr = self.set_added_mass(ship_config.added_mass_coefficient_in_surge,
-                                                              ship_config.added_mass_coefficient_in_sway,
-                                                              ship_config.added_mass_coefficient_in_yaw)
-
-        self.t_surge = ship_config.mass_over_linear_friction_coefficient_in_surge
-        self.t_sway = ship_config.mass_over_linear_friction_coefficient_in_sway
-        self.t_yaw = ship_config.mass_over_linear_friction_coefficient_in_yaw
-        self.ku = ship_config.nonlinear_friction_coefficient__in_surge  # 2400.0  # non-linear friction coeff in surge
-        self.kv = ship_config.nonlinear_friction_coefficient__in_sway  # 4000.0  # non-linear friction coeff in sway
-        self.kr = ship_config.nonlinear_friction_coefficient__in_yaw  # 400.0  # non-linear friction coeff in yaw
-
-        # Environmental conditions
-        self.vel_c = np.array([environment_config.current_velocity_component_from_north,
-                               environment_config.current_velocity_component_from_east,
-                               0.0])
-        self.wind_dir = environment_config.wind_direction
-        self.wind_speed = environment_config.wind_speed
-
-        # Initial states (can be altered using self.set_state_vector(x))
-        self.n = simulation_config.initial_north_position_m
-        self.e = simulation_config.initial_east_position_m
-        self.psi = simulation_config.initial_yaw_angle_rad
-        self.u = simulation_config.initial_forward_speed_m_per_s
-        self.v = simulation_config.initial_sideways_speed_m_per_s
-        self.r = simulation_config.initial_yaw_rate_rad_per_s
-        self.x = self.update_state_vector()
-        self.states = np.empty(6)
-
-        # Differentials
-        self.d_n = self.d_e = self.d_psi = 0
-        self.d_u = self.d_v = self.d_r = 0
-        self.hello = 'Hello'
-
-        # Set up integration
-        self.int = EulerInt()  # Instantiate the Euler integrator
-        self.int.set_dt(simulation_config.integration_step)
-        self.int.set_sim_time(simulation_config.simulation_time)
-
-        # Instantiate ship draw plotting
-        self.drw = ShipDraw()  # Instantiate the ship drawing class
-        self.ship_drawings = [[], []]  # Arrays for storing ship drawing data
-
-        # Wind effect on ship
-        self.rho_a = 1.2
-        self.h_f = 8.0  # mean height above water seen from the front
-        self.h_s = 8.0  # mean height above water seen from the side
-        self.proj_area_f = self.w_ship * self.h_f  # Projected are from the front
-        self.proj_area_l = self.l_ship * self.h_s  # Projected area from the side
-        self.cx = 0.5
-        self.cy = 0.7
-        self.cn = 0.08
-
+        super().__init__(ship_config, simulation_config, environment_config)
         self.simulation_results = defaultdict(list)
-
-    def set_added_mass(self, surge_coeff, sway_coeff, yaw_coeff):
-        ''' Sets the added mass in surge due to surge motion, sway due
-            to sway motion and yaw due to yaw motion according to given coeffs.
-
-            args:
-                surge_coeff (float): Added mass coefficient in surge direction due to surge motion
-                sway_coeff (float): Added mass coefficient in sway direction due to sway motion
-                yaw_coeff (float): Added mass coefficient in yaw direction due to yaw motion
-            returns:
-                x_du (float): Added mass in surge
-                y_dv (float): Added mass in sway
-                n_dr (float): Added mass in yaw
-        '''
-        x_du = self.mass * surge_coeff
-        y_dv = self.mass * sway_coeff
-        n_dr = self.i_z * yaw_coeff
-        return x_du, y_dv, n_dr
-
-    def get_wind_force(self):
-        ''' This method calculates the forces due to the relative
-            wind speed, acting on teh ship in surge, sway and yaw
-            direction.
-
-            :return: Wind force acting in surge, sway and yaw
-        '''
-        uw = self.wind_speed * np.cos(self.wind_dir - self.psi)
-        vw = self.wind_speed * np.sin(self.wind_dir - self.psi)
-        u_rw = uw - self.u
-        v_rw = vw - self.v
-        gamma_rw = -np.arctan2(v_rw, u_rw)
-        wind_rw2 = u_rw ** 2 + v_rw ** 2
-        c_x = -self.cx * np.cos(gamma_rw)
-        c_y = self.cy * np.sin(gamma_rw)
-        c_n = self.cn * np.sin(2 * gamma_rw)
-        tau_coeff = 0.5 * self.rho_a * wind_rw2
-        tau_u = tau_coeff * c_x * self.proj_area_f
-        tau_v = tau_coeff * c_y * self.proj_area_l
-        tau_n = tau_coeff * c_n * self.proj_area_l * self.l_ship
-        return np.array([tau_u, tau_v, tau_n])
-
-    def update_state_vector(self):
-        ''' Update the state vector according to the individual state values
-        '''
-        return np.array([self.n, self.e, self.psi, self.u, self.v, self.r])
-
-    def set_north_pos(self, val):
-        ''' Set the north position of the ship and update the state vector
-        '''
-        self.n = val
-        self.x = self.update_state_vector()
-
-    def set_east_pos(self, val):
-        ''' Set the east position of the ship and update the state vector
-        '''
-        self.e = val
-        self.x = self.update_state_vector()
-
-    def set_yaw_angle(self, val):
-        ''' Set the yaw angle of the ship and update the state vector
-        '''
-        self.psi = val
-        self.x = self.update_state_vector()
-
-    def set_surge_speed(self, val):
-        ''' Set the surge speed of the ship and update the state vector
-        '''
-        self.u = val
-        self.x = self.update_state_vector()
-
-    def set_sway_speed(self, val):
-        ''' Set the sway speed of the ship and update the state vector
-        '''
-        self.v = val
-        self.x = self.update_state_vector()
-
-    def set_yaw_rate(self, val):
-        ''' Set the yaw rate of the ship and update the state vector
-        '''
-        self.r = val
-        self.x = self.update_state_vector()
-
-    def three_dof_kinematics(self):
-        ''' Updates the time differientials of the north position, east
-            position and yaw angle. Should be called in the simulation
-            loop before the integration step.
-        '''
-        vel = np.array([self.u, self.v, self.r])
-        dx = np.dot(self.rotation(), vel)
-        self.d_n = dx[0]
-        self.d_e = dx[1]
-        self.d_psi = dx[2]
-
-    def rotation(self):
-        ''' Specifies the rotation matrix for rotations about the z-axis, such that
-            "body-fixed coordinates" = rotation x "North-east-down-fixed coordinates" .
-        '''
-        return np.array([[np.cos(self.psi), -np.sin(self.psi), 0],
-                         [np.sin(self.psi), np.cos(self.psi), 0],
-                         [0, 0, 1]])
-
-    def three_dof_kinetics(self):
-        ''' Calculates accelerations of the ship, as a funciton
-            of wind forces and the states in the previous time-step.
-        '''
-        # System matrices (did not include added mass yet)
-        M_rb = np.array([[self.mass + self.x_du, 0, 0],
-                         [0, self.mass + self.y_dv, self.mass * self.x_g],
-                         [0, self.mass * self.x_g, self.i_z + self.n_dr]])
-        C_rb = np.array([[0, 0, -self.mass * (self.x_g * self.r + self.v)],
-                         [0, 0, self.mass * self.u],
-                         [self.mass * (self.x_g * self.r + self.v), -self.mass * self.u, 0]])
-
-        D = np.array([[self.mass / self.t_surge, 0, 0],
-                      [0, self.mass / self.t_sway, 0],
-                      [0, 0, self.i_z / self.t_yaw]])
-        D2 = np.array([[self.ku * self.u, 0, 0],
-                       [0, self.kv * self.v, 0],
-                       [0, 0, self.kr * self.r]])
-
-        F_wind = self.get_wind_force()
-        F_waves = np.array([0, 0, 0])
-
-        # assembling state vector
-        vel = np.array([self.u, self.v, self.r])
-
-        # Transforming current velocity to ship frame
-        v_c = np.dot(np.linalg.inv(self.rotation()), self.vel_c)
-        u_r = self.u - v_c[0]
-        v_r = self.v - v_c[1]
-
-        C_a = np.array([[0, 0, self.y_dv * v_r],
-                        [0, 0, -self.x_du * u_r],
-                        [-self.y_dv * v_r, self.x_du * u_r, 0]])
-
-        # Kinetic equation
-        M_inv = np.linalg.inv(M_rb)
-        dx = np.dot(M_inv, -np.dot(C_rb, vel) - -np.dot(C_a, vel - v_c) - np.dot(D + D2, vel - v_c)
-                    + F_wind)
-        self.d_u = dx[0]
-        self.d_v = dx[1]
-        self.d_r = dx[2]
-
-    def update_differentials(self):
-        ''' This method should be called in the simulation loop. It will
-            update the full differential equation of the ship.
-        '''
-        self.three_dof_kinematics()
-        self.three_dof_kinetics()
-
-    def integrate_differentials(self):
-        ''' Integrates the differential equation one time step ahead using
-            the euler intgration method with parameters set in the
-            int-instantiation of the "EulerInt"-class.
-        '''
-        self.set_north_pos(self.int.integrate(self.n, self.d_n))
-        self.set_east_pos(self.int.integrate(self.e, self.d_e))
-        self.set_yaw_angle(self.int.integrate(self.psi, self.d_psi))
-        self.set_surge_speed(self.int.integrate(self.u, self.d_u))
-        self.set_sway_speed(self.int.integrate(self.v, self.d_v))
-        self.set_yaw_rate(self.int.integrate(self.r, self.d_r))
-
-    def store_states(self):
-        ''' Appends the current value of each state to an array. This
-            is convenient when plotting. The method should be called within
-            the simulation loop each time step. Then afterwars, an array
-            containing for ecample the north-position for each time step
-            is obtained as ...states[0]
-        '''
-        self.states[0].append(self.n)
-        self.states[1].append(self.e)
-        self.states[2].append(self.psi)
-        self.states[3].append(self.u)
-        self.states[4].append(self.v)
-        self.states[5].append(self.r)
-
-    def ship_snap_shot(self):
-        ''' This method is used to store a map-view snap shot of
-            the ship at the given north-east position and heading.
-            It uses the ShipDraw-class. To plot a map view of the
-            n-th ship snap-shot, use:
-
-            plot(ship_drawings[1][n], ship_drawings[0][n])
-        '''
-        x, y = self.drw.local_coords()
-        x_ned, y_ned = self.drw.rotate_coords(x, y, self.psi)
-        x_ned_trans, y_ned_trans = self.drw.translate_coords(x_ned, y_ned, self.n, self.e)
-        self.ship_drawings[0].append(x_ned_trans)
-        self.ship_drawings[1].append(y_ned_trans)
 
     def store_simulation_data(self):
         self.simulation_results['time [s]'].append(self.int.time)
-        self.simulation_results['north position [m]'].append(self.n)
-        self.simulation_results['east position [m]'].append(self.e)
-        self.simulation_results['yaw angle [deg]'].append(self.t_yaw * 180 / np.pi)
-        self.simulation_results['forward speed[m/s]'].append(self.u)
-        self.simulation_results['sideways speed [m/s]'].append(self.v)
-        self.simulation_results['yaw rate [deg/sec]'].append(self.r * 180 / np.pi)
+        self.simulation_results['north position [m]'].append(self.north)
+        self.simulation_results['east position [m]'].append(self.east)
+        self.simulation_results['yaw angle [deg]'].append(self.yaw_angle * 180 / np.pi)
+        self.simulation_results['forward speed[m/s]'].append(self.forward_speed)
+        self.simulation_results['sideways speed [m/s]'].append(self.sideways_speed)
+        self.simulation_results['yaw rate [deg/sec]'].append(self.yaw_rate * 180 / np.pi)
         self.simulation_results['wind speed [m/sec]'].append(self.wind_speed)
 
 
-class ControllerLib:
-    ''' This class offers the following set of controllers :
-        - P-controller
-        - PI-controller
-        - PD-controller
-        - PID-controller
-        - A second order filter
-        - Signal saturation
-    '''
+class PiController:
+    def __init__(self, kp: float, ki: float, time_step: float, initial_integral_error=0):
+        self.kp = kp
+        self.ki = ki
+        self.error_i = initial_integral_error
+        self.time_step = time_step
 
-    def __init__(self):
-        self.kp = 1.0
-        self.ki = 1.0
-        self.kd = 1.0
-        self.t = 1.0
-        self.prev_error = 0.0
-        self.error_i = 0.0
-
-    def set_error_i(self, val):
-        ''' Reset/set the value of the error-integral to "val".
-            Useful for PI and PID.controllers
-        '''
-        self.error_i = val
-
-    def set_kp(self, val):
-        ''' Set the proportional gain constant
-        '''
-        self.kp = val
-
-    def set_kd(self, val):
-        ''' Set the gain constant for the derivative term
-        '''
-        self.kd = val
-
-    def set_ki(self, val):
-        ''' Set the gain constant for the integral term
-        '''
-        self.ki = val
-
-    def set_T(self, val):
-        ''' Set the time constant. Only relevant
-            for the low pass filter
-        '''
-        self.T = val
-
-    def p_ctrl(self, ref, meas):
-        ''' Uses a proportional control law to calculate a control output
-        '''
-        error = ref - meas
-        return self.kp * error
-
-    def pi_ctrl(self, ref, meas, dt, *args):
+    def pi_ctrl(self, setpoint, measurement, *args):
         ''' Uses a proportional-integral control law to calculate a control
             output. The optional argument is an 2x1 array and will specify lower
             and upper limit for error integration [lower, upper]
         '''
-        error = ref - meas
-        error_i = self.error_i + error * dt
+        error = setpoint - measurement
+        error_i = self.error_i + error * self.time_step
         if args:
             error_i = self.sat(error_i, args[0], args[1])
         self.error_i = error_i
         return error * self.kp + error_i * self.ki
-
-    def pd_ctrl(self, ref, meas, dt):
-        ''' Uses a proportional-derivative control law to calculate a control
-            output
-        '''
-        error = ref - meas
-        d_error = (error - self.prev_error) / dt
-        self.prev_error = error
-        return error * self.kp - d_error * self.kd
-
-    def pid_ctrl(self, ref, meas, dt, *args):
-        ''' Uses a proportional-derivative-integral control law to calculate
-            a control output. The optional argument is a 2x1 array and will
-            specify lower and upper [lower, upper] limit for error integration
-        '''
-        error = ref - meas
-        d_error = (error - self.prev_error) / dt
-        error_i = self.error_i + error * dt
-        if args:
-            error_i = self.sat(error_i, args[0], args[1])
-        self.prev_error = error
-        self.error_i = error_i
-        return error * self.kp - d_error * self.kd + error_i * self.ki
-
-    def filter_2(self, ref, x, v):
-        ''' Calculates the two time differentials dx and dv which may be
-            integrated to "smooth out" the reference signal "ref"
-        '''
-        dx = v
-        dv = (self.kp * (ref - x) - self.kd * v) / self.t
-        return dx, dv
 
     @staticmethod
     def sat(val, low, hi):
@@ -1775,6 +1037,117 @@ class ControllerLib:
         between "low" and "hi"
         '''
         return max(low, min(val, hi))
+
+
+class PidController:
+    def __init__(self, kp: float, kd: float, ki: float, time_step: float):
+        self.kp = kp
+        self.kd = kd
+        self.ki = ki
+        self.error_i = 0
+        self.prev_error = 0
+        self.time_step = time_step
+
+    def pid_ctrl(self, setpoint, measurement, *args):
+        ''' Uses a proportional-derivative-integral control law to calculate
+            a control output. The optional argument is a 2x1 array and will
+            specify lower and upper [lower, upper] limit for error integration
+        '''
+        error = setpoint - measurement
+        d_error = (error - self.prev_error) / self.time_step
+        error_i = self.error_i + error * self.time_step
+        if args:
+            error_i = self.sat(error_i, args[0], args[1])
+        self.prev_error = error
+        self.error_i = error_i
+        return error * self.kp + d_error * self.kd + error_i * self.ki
+
+    @staticmethod
+    def sat(val, low, hi):
+        ''' Saturate the input val such that it remains
+        between "low" and "hi"
+        '''
+        return max(low, min(val, hi))
+
+
+class ThrottleControllerGains(NamedTuple):
+    kp_ship_speed: float
+    ki_ship_speed: float
+    kp_shaft_speed: float
+    ki_shaft_speed: float
+
+
+class EngineThrottleFromSpeedSetPoint:
+    """
+    Calculates throttle setpoint for power generation based on the ship´s speed, the propeller shaft speed
+    and the desires ship speed.
+    """
+
+    def __init__(
+            self,
+            gains: ThrottleControllerGains,
+            max_shaft_speed: float,
+            time_step: float,
+            initial_shaft_speed_integral_error: float
+    ):
+        self.ship_speed_controller = PiController(
+            kp=gains.kp_ship_speed, ki=gains.ki_ship_speed, time_step=time_step
+        )
+        self.shaft_speed_controller = PiController(
+            kp=gains.kp_shaft_speed,
+            ki=gains.ki_shaft_speed,
+            time_step=time_step,
+            initial_integral_error=initial_shaft_speed_integral_error
+        )
+        self.max_shaft_speed = max_shaft_speed
+
+    def throttle(self, speed_set_point, measured_speed, measured_shaft_speed):
+        desired_shaft_speed = self.ship_speed_controller.pi_ctrl(setpoint=speed_set_point, measurement=measured_speed)
+        desired_shaft_speed = self.ship_speed_controller.sat(val=desired_shaft_speed, low=0, hi=self.max_shaft_speed)
+        throttle = self.shaft_speed_controller.pi_ctrl(setpoint=desired_shaft_speed, measurement=measured_shaft_speed)
+        return self.shaft_speed_controller.sat(val=throttle, low=0, hi=1.1)
+
+
+class HeadingControllerGains(NamedTuple):
+    kp: float
+    kd: float
+    ki: float
+
+
+class HeadingByReferenceController:
+    def __init__(self, gains: HeadingControllerGains, time_step, max_rudder_angle):
+        self.ship_heading_controller = PidController(kp=gains.kp, kd=gains.kd, ki=gains.ki, time_step=time_step)
+        self.max_rudder_angle = max_rudder_angle
+
+    def rudder_angle_from_heading_setpoint(self, heading_ref: float, measured_heading: float):
+        ''' This method finds a suitable rudder angle for the ship to
+            sail with the heading specified by "heading_ref" by using
+            PID-controller. The rudder angle is saturated according to
+            |self.rudder_ang_max|. The mathod should be called from within
+            simulation loop if the user want the ship to follow a specified
+            heading reference signal.
+        '''
+        rudder_angle = -self.ship_heading_controller.pid_ctrl(setpoint=heading_ref, measurement=measured_heading)
+        return self.ship_heading_controller.sat(rudder_angle, -self.max_rudder_angle, self.max_rudder_angle)
+
+
+class HeadingByRouteController:
+    def __init__(self, route_name, heading_controller_gains: HeadingControllerGains, time_step: float, max_rudder_angle: float):
+        self.heading_controller = HeadingByReferenceController(
+            gains=heading_controller_gains, time_step=time_step, max_rudder_angle=max_rudder_angle
+        )
+        self.navigate = NavigationSystem(route_name)
+        self.next_wpt = 1
+        self.prev_wpt = 0
+
+    def rudder_angle_from_route(self, north_position, east_position, heading):
+        ''' This method finds a suitable rudder angle for the ship to follow
+            a predefined route specified in the "navigate"-instantiation of the
+            "NavigationSystem"-class.
+        '''
+        self.next_wpt, self.prev_wpt = self.navigate.next_wpt(self.next_wpt, north_position, east_position)
+        psi_d = self.navigate.los_guidance(self.next_wpt, north_position, east_position)
+        return self.heading_controller.rudder_angle_from_heading_setpoint(heading_ref=psi_d, measured_heading=heading)
 
 
 class EulerInt:
@@ -1890,6 +1263,8 @@ class NavigationSystem:
         self.load_waypoints(route)
         self.ra = 600  # Radius of acceptance for waypoints
         self.r = 450  # Lookahead distance
+        self.ki = 0.000007
+        self.e_ct_int = 0
 
     def load_waypoints(self, route):
         ''' Reads the file containing the route and stores it as an
@@ -1929,7 +1304,8 @@ class NavigationSystem:
         if e_ct ** 2 >= self.r ** 2:
             e_ct = 0.99 * self.r
         delta = math.sqrt(self.r ** 2 - e_ct ** 2)
-        chi_r = math.atan(-e_ct / delta)
+        self.e_ct_int += e_ct
+        chi_r = math.atan(-e_ct / delta + self.ki * self.e_ct_int)
         return alpha_k + chi_r
 
 
