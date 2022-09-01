@@ -352,8 +352,6 @@ class ShipMachineryModel(BaseMachineryModel):
         self.power_total = []
         self.power_prop = []
 
-
-
     def shaft_eq(self, torque_main_engine, torque_hsg):
         ''' Updates the time differential of the shaft speed
             equation.
@@ -395,44 +393,6 @@ class ShipMachineryModel(BaseMachineryModel):
             torque_main_engine=self.main_engine_torque(load_perc=load_percentage),
             torque_hsg=self.hsg_torque(load_perc=load_percentage)
         )
-
-    @staticmethod
-    def spec_fuel_cons(load_perc, coeffs: FuelConsumptionCoefficients):
-        """ Calculate fuel consumption rate for engine.
-        """
-        rate = coeffs.a * load_perc ** 2 + coeffs.b * load_perc + coeffs.c
-        return rate / 3.6e9
-
-    def fuel_consumption(self, load_perc):
-        '''
-            Args:
-                load_perc (float): The fraction of produced power over the online power production capacity.
-            Returns:
-                rate_me (float): Fuel consumption rate for the main engine
-                rate_hsg (float): Fuel consumption rate for the HSG
-                fuel_cons_me (float): Accumulated fuel consumption for the ME
-                fuel_cons_hsg (float): Accumulated fuel consumption for the HSG
-                fuel_cons (float): Total accumulated fuel consumption for the ship
-        '''
-        load_data = self.mode.distribute_load(load_perc=load_perc, hotel_load=self.hotel_load)
-        if load_data.load_on_main_engine == 0:
-            rate_me = 0
-        else:
-            rate_me = load_data.load_on_main_engine * self.spec_fuel_cons(
-                load_data.load_percentage_on_main_engine, coeffs=self.specific_fuel_coeffs_for_main_engine
-            )
-
-        if load_data.load_percentage_on_electrical == 0:
-            rate_electrical = 0
-        else:
-            rate_electrical = load_data.load_on_electrical * self.spec_fuel_cons(
-                load_data.load_percentage_on_electrical, coeffs=self.specific_fuel_coeffs_for_dg
-            )
-
-        self.fuel_cons_me = self.fuel_cons_me + rate_me * self.int.dt
-        self.fuel_cons_electrical = self.fuel_cons_electrical + rate_electrical * self.int.dt
-        self.fuel_cons = self.fuel_cons + (rate_me + rate_electrical) * self.int.dt
-        return rate_me, rate_electrical, self.fuel_cons_me, self.fuel_cons_electrical, self.fuel_cons
 
 
 class SimplifiedMachineryModel(BaseMachineryModel):
