@@ -1068,6 +1068,26 @@ class EngineThrottleFromSpeedSetPoint:
         return self.shaft_speed_controller.sat(val=throttle, low=0, hi=1.1)
 
 
+class ThrottleFromSpeedSetPointSimplifiedPropulsion:
+    """
+    Calculates throttle setpoint for power generation based on the ship´s speed, the propeller shaft speed
+    and the desires ship speed.
+    """
+
+    def __init__(
+            self,
+            kp: float,
+            ki: float,
+            time_step: float,
+    ):
+        self.ship_speed_controller = PiController(
+            kp=kp, ki=ki, time_step=time_step
+        )
+
+    def throttle(self, speed_set_point, measured_speed):
+        throttle = self.ship_speed_controller.pi_ctrl(setpoint=speed_set_point, measurement=measured_speed)
+        return self.ship_speed_controller.sat(val=throttle, low=0, hi=1.1)
+
 class HeadingControllerGains(NamedTuple):
     kp: float
     kd: float

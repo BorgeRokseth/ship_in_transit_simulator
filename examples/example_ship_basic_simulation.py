@@ -1,9 +1,21 @@
+import sys
+import os
+from functools import reduce
+
+# allow imports when running script from within project dir
+[sys.path.append(i) for i in ['.', '..']]
+
+# allow imports when running script from project dir parent dirs
+l = []
+script_path = os.path.split(sys.argv[0])
+for i in range(len(script_path)):
+  sys.path.append( reduce(os.path.join, script_path[:i+1]) )
 
 from models import ShipModel, ShipConfiguration, EnvironmentConfiguration, \
     MachinerySystemConfiguration, SimulationConfiguration, MachineryModes, \
     MachineryMode, MachineryModeParams, HeadingControllerGains, HeadingByReferenceController, \
     EngineThrottleFromSpeedSetPoint, ThrottleControllerGains, SpecificFuelConsumptionWartila6L26, \
-    SpecificFuelConsumptionBaudouin6M26Dot3, RudderConfiguration
+    SpecificFuelConsumptionBaudouin6M26Dot3
 
 import numpy as np
 import matplotlib.pyplot as plt

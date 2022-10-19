@@ -1,7 +1,8 @@
 from models import ShipModelSimplifiedPropulsion, ShipConfiguration, EnvironmentConfiguration, \
     SimplifiedPropulsionMachinerySystemConfiguration ,SimulationConfiguration, \
     MachineryModes, MachineryMode, MachineryModeParams, HeadingControllerGains, HeadingByReferenceController, \
-    SpecificFuelConsumptionBaudouin6M26Dot3, SpecificFuelConsumptionWartila6L26
+    SpecificFuelConsumptionBaudouin6M26Dot3, SpecificFuelConsumptionWartila6L26, \
+    ThrottleFromSpeedSetPointSimplifiedPropulsion
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -92,6 +93,8 @@ ship_model = ShipModelSimplifiedPropulsion(
     simulation_config=simulation_setup,
 )
 
+speed_controller = ThrottleFromSpeedSetPointSimplifiedPropulsion(kp=3, ki=0.02, time_step=time_step)
+
 desired_heading_radians = 45 * np.pi / 180
 time_since_last_ship_drawing = 30
 
@@ -103,6 +106,7 @@ heading_controller = HeadingByReferenceController(
 while ship_model.int.time < ship_model.int.sim_time:
     # "Measure" heading and speed
     heading_measurement_radians = ship_model.yaw_angle
+    speed_measurement = ship_model.forward_speed
 
     # Find appropriate rudder angle and engine throttle
     rudder_angle = heading_controller.rudder_angle_from_heading_setpoint(
@@ -112,7 +116,7 @@ while ship_model.int.time < ship_model.int.sim_time:
     if ship_model.int.time < 20:
         engine_load = 0
     else:
-        engine_load = 1
+        engine_load = speed_controller.throttle(speed_set_point=7, measured_speed=speed_measurement)
 
     # Update and integrate differential equations for current time step
     ship_model.store_simulation_data(engine_load)
