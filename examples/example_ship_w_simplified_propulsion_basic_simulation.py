@@ -35,7 +35,7 @@ ship_config = ShipConfiguration(
 env_config = EnvironmentConfiguration(
     current_velocity_component_from_north=0,
     current_velocity_component_from_east=0,
-    wind_speed=0,
+    wind_speed=24,
     wind_direction=0
 )
 pto_mode_params = MachineryModeParams(

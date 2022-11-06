@@ -2,7 +2,7 @@ from models import ShipModel, ShipConfiguration, EnvironmentConfiguration, \
     MachinerySystemConfiguration, SimulationConfiguration, StaticObstacle, \
     MachineryMode, MachineryModeParams, MachineryModes, ThrottleControllerGains, \
     EngineThrottleFromSpeedSetPoint, HeadingByRouteController, HeadingControllerGains, \
-    SpecificFuelConsumptionWartila6L26, SpecificFuelConsumptionBaudouin6M26Dot3
+    SpecificFuelConsumptionWartila6L26, SpecificFuelConsumptionBaudouin6M26Dot3, LosParameters
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -35,9 +35,9 @@ ship_config = ShipConfiguration(
     nonlinear_friction_coefficient__in_yaw=400
 )
 env_config = EnvironmentConfiguration(
-    current_velocity_component_from_north=0,
-    current_velocity_component_from_east=1,
-    wind_speed=5,
+    current_velocity_component_from_north=-2,
+    current_velocity_component_from_east=-2,
+    wind_speed=0,
     wind_direction=0
 )
 mec_mode_params = MachineryModeParams(
@@ -78,7 +78,7 @@ simulation_setup = SimulationConfiguration(
     initial_sideways_speed_m_per_s=0,
     initial_yaw_rate_rad_per_s=0,
     integration_step=time_step,
-    simulation_time=600,
+    simulation_time=3600,
 )
 ship_model = ShipModel(ship_config=ship_config,
                        machinery_config=machinery_config,
@@ -106,12 +106,22 @@ throttle_controller = EngineThrottleFromSpeedSetPoint(
 )
 
 heading_controller_gains = HeadingControllerGains(kp=4, kd=90, ki=0.01)
+los_guidance_parameters = LosParameters(
+    radius_of_acceptance=600,
+    lookahead_distance=500,
+    integral_gain=0.002,
+    integrator_windup_limit=4000
+)
 auto_pilot = HeadingByRouteController(
     route_name="route.txt",
     heading_controller_gains=heading_controller_gains,
+    los_parameters=los_guidance_parameters,
     time_step=time_step,
     max_rudder_angle=machinery_config.max_rudder_angle_degrees * np.pi/180
 )
+
+integrator_term = []
+times = []
 
 while ship_model.int.time < ship_model.int.sim_time:
     # Measure position and speed
@@ -136,6 +146,9 @@ while ship_model.int.time < ship_model.int.sim_time:
     ship_model.store_simulation_data(throttle)
     ship_model.update_differentials(engine_throttle=throttle, rudder_angle=rudder_angle)
     ship_model.integrate_differentials()
+
+    integrator_term.append(auto_pilot.navigate.e_ct_int)
+    times.append(ship_model.int.time)
 
     # Make a drawing of the ship from above every 20 second
     if time_since_last_ship_drawing > 30:
@@ -162,5 +175,8 @@ map_ax.set_aspect('equal')
 # Example on plotting time series
 fuel_ifg, fuel_ax = plt.subplots()
 results.plot(x='time [s]', y='power [kw]', ax=fuel_ax)
+
+int_fig, int_ax = plt.subplots()
+int_ax.plot(times, integrator_term)
 
 plt.show()

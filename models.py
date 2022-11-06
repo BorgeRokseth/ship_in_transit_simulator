@@ -81,7 +81,6 @@ class MachineryMode:
             self.available_propulsion_power_main_engine = self.main_engine_capacity
             self.available_propulsion_power_electrical = 0
 
-
     def distribute_load(self, load_perc, hotel_load):
         total_load_propulsion = load_perc * self.available_propulsion_power
         if self.shaft_generator_state == 'MOTOR':
@@ -1093,6 +1092,11 @@ class HeadingControllerGains(NamedTuple):
     kd: float
     ki: float
 
+class LosParameters(NamedTuple):
+    radius_of_acceptance: float
+    lookahead_distance: float
+    integral_gain: float
+    integrator_windup_limit: float
 
 class HeadingByReferenceController:
     def __init__(self, gains: HeadingControllerGains, time_step, max_rudder_angle):
@@ -1112,11 +1116,23 @@ class HeadingByReferenceController:
 
 
 class HeadingByRouteController:
-    def __init__(self, route_name, heading_controller_gains: HeadingControllerGains, time_step: float, max_rudder_angle: float):
+    def __init__(
+            self, route_name,
+            heading_controller_gains: HeadingControllerGains,
+            los_parameters: LosParameters,
+            time_step: float,
+            max_rudder_angle: float,
+    ):
         self.heading_controller = HeadingByReferenceController(
             gains=heading_controller_gains, time_step=time_step, max_rudder_angle=max_rudder_angle
         )
-        self.navigate = NavigationSystem(route_name)
+        self.navigate = NavigationSystem(
+            route=route_name,
+            radius_of_acceptance=los_parameters.radius_of_acceptance,
+            lookahead_distance=los_parameters.lookahead_distance,
+            integral_gain=los_parameters.integral_gain,
+            integrator_windup_limit=los_parameters.integrator_windup_limit
+        )
         self.next_wpt = 1
         self.prev_wpt = 0
 
@@ -1239,12 +1255,19 @@ class NavigationSystem:
         (x2,y2) to the second, etc.
     '''
 
-    def __init__(self, route):
+    def __init__(
+            self, route,
+            radius_of_acceptance=600,
+            lookahead_distance=450,
+            integral_gain=0.01,
+            integrator_windup_limit=0.5
+    ):
         self.load_waypoints(route)
-        self.ra = 600  # Radius of acceptance for waypoints
-        self.r = 450  # Lookahead distance
-        self.ki = 0.000007
+        self.ra = radius_of_acceptance
+        self.r = lookahead_distance
+        self.ki = integral_gain
         self.e_ct_int = 0
+        self.integrator_limit = integrator_windup_limit
 
     def load_waypoints(self, route):
         ''' Reads the file containing the route and stores it as an
@@ -1284,8 +1307,9 @@ class NavigationSystem:
         if e_ct ** 2 >= self.r ** 2:
             e_ct = 0.99 * self.r
         delta = math.sqrt(self.r ** 2 - e_ct ** 2)
-        self.e_ct_int += e_ct
-        chi_r = math.atan(-e_ct / delta + self.ki * self.e_ct_int)
+        if abs(self.e_ct_int + e_ct / delta) <= self.integrator_limit:
+            self.e_ct_int += e_ct / delta
+        chi_r = math.atan(-e_ct / delta - self.e_ct_int*self.ki)
         return alpha_k + chi_r
 
 
