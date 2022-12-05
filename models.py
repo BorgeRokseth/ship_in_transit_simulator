@@ -522,7 +522,7 @@ class BaseShipModel:
 
     def get_wind_force(self):
         ''' This method calculates the forces due to the relative
-            wind speed, acting on teh ship in surge, sway and yaw
+            wind speed, acting on the ship in surge, sway and yaw
             direction.
 
             :return: Wind force acting in surge, sway and yaw
@@ -679,7 +679,7 @@ class ShipModel(BaseShipModel):
         self.simulation_results = defaultdict(list)
 
     def three_dof_kinetics(self, thrust_force=None, rudder_angle=None, load_percentage=None, *args, **kwargs):
-        ''' Calculates accelerations of the ship, as a funciton
+        ''' Calculates accelerations of the ship, as a function
             of thrust-force, rudder angle, wind forces and the
             states in the previous time-step.
         '''

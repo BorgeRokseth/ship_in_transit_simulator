@@ -20,10 +20,7 @@ degrees of freedom (surge, sway and yaw),
 * Surge speed [meters per second]
 * Sway speed [meters per second]
 * Turn rate [radians per second]
-
-The equations of motion are given as: 
-
-![equation 1](https://latex.codecogs.com/gif.latex?%5Cdot%7B%5Cboldsymbol%7Bx%7D%7D%20%3D%20%5Cboldsymbol%7BR%7D_z%28%5Cpsi%29%20%5Cboldsymbol%7Bv%7D)
+* 
 
 Additionally, models including machinery system dynamics will have 
 in addition on of the following states
@@ -89,9 +86,11 @@ for propulsion to be used for generating thrust
 * A speed controller that can controls propeller shaft
 speed according to ship speed setpoint is provided. 
 
+## Equations
+Details regarding the equations of motion can be found in the file ship_dynamics.pdf
 
 # Usage
-
+See examples
 
 ## Installation
 Import models.py into your code. 
