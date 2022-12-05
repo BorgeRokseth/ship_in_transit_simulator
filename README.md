@@ -23,7 +23,7 @@ degrees of freedom (surge, sway and yaw),
 
 The equations of motion are given as: 
 
-![equation] (https://latex.codecogs.com/gif.latex?%5Cdot%7B%5Cboldsymbol%7Bx%7D%7D%20%3D%20%5Cboldsymbol%7BR%7D_z%28%5Cpsi%29%20%5Cboldsymbol%7Bv%7D)
+![equation 1](https://latex.codecogs.com/gif.latex?%5Cdot%7B%5Cboldsymbol%7Bx%7D%7D%20%3D%20%5Cboldsymbol%7BR%7D_z%28%5Cpsi%29%20%5Cboldsymbol%7Bv%7D)
 
 Additionally, models including machinery system dynamics will have 
 in addition on of the following states
