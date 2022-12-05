@@ -1,0 +1,8 @@
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Rokseth"
+  given-names: "Børge"
+  orcid: "https://orcid.org/0000-0003-1006-756X"
+title: "Ship in transit simulator"
+date-released: 2022-12-05
+url: "https://github.com/BorgeRokseth/ship_in_transit_simulator"
