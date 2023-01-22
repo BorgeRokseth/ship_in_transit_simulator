@@ -6,7 +6,7 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 from collections import defaultdict
-from typing import NamedTuple, List
+from typing import NamedTuple, List, Union
 
 
 class ShipConfiguration(NamedTuple):
@@ -145,6 +145,13 @@ class MachinerySystemConfiguration(NamedTuple):
     specific_fuel_consumption_coefficients_dg: FuelConsumptionCoefficients
 
 
+class WithoutMachineryModelConfiguration(NamedTuple):
+    thrust_force_dynamic_time_constant: float
+    rudder_angle_to_sway_force_coefficient: float
+    rudder_angle_to_yaw_force_coefficient: float
+    max_rudder_angle_degrees: float
+
+
 class SimplifiedPropulsionMachinerySystemConfiguration(NamedTuple):
     hotel_load: float
     machinery_modes: MachineryModes
@@ -193,17 +200,23 @@ class RudderConfiguration(NamedTuple):
 
 class BaseMachineryModel:
     def __init__(self,
-                 fuel_coeffs_for_main_engine: FuelConsumptionCoefficients,
-                 fuel_coeffs_for_diesel_gen: FuelConsumptionCoefficients,
+                 fuel_coeffs_for_main_engine: Union[FuelConsumptionCoefficients, None],
+                 fuel_coeffs_for_diesel_gen: Union[FuelConsumptionCoefficients, None],
                  rudder_config: RudderConfiguration,
-                 machinery_modes: MachineryModes,
-                 hotel_load: float,
-                 operating_mode: int,
+                 machinery_modes: Union[MachineryModes, None],
+                 hotel_load: Union[float, None],
+                 operating_mode: Union[int, None],
                  time_step: float):
-        self.machinery_modes = machinery_modes
-        self.hotel_load = hotel_load  # 200000  # 0.2 MW
-        self.update_available_propulsion_power()
-        self.mode = self.machinery_modes.list_of_modes[operating_mode]
+
+
+        if machinery_modes:
+            self.machinery_modes = machinery_modes
+        if hotel_load:
+            self.hotel_load = hotel_load  # 200000  # 0.2 MW
+        if machinery_modes and hotel_load:
+            self.update_available_propulsion_power()
+        if operating_mode is not None and machinery_modes is not None:
+            self.mode = self.machinery_modes.list_of_modes[operating_mode]
 
         # Set up integration
         self.int = EulerInt()  # Instantiate the Euler integrator
@@ -212,34 +225,40 @@ class BaseMachineryModel:
         self.c_rudder_v = rudder_config.rudder_angle_to_sway_force_coefficient
         self.c_rudder_r = rudder_config.rudder_angle_to_yaw_force_coefficient
         self.rudder_ang_max = rudder_config.max_rudder_angle_degrees * np.pi / 180
-
-        self.fuel_coeffs_for_main_engine = fuel_coeffs_for_main_engine
-        self.fuel_coeffs_for_diesel_gen = fuel_coeffs_for_diesel_gen
-        self.fuel_cons_me = 0.0  # Initial fuel cons for ME
-        self.fuel_cons_electrical = 0.0  # Initial fuel cons for HSG
-        self.fuel_cons = 0.0  # Initial total fuel cons
-        self.power_me = []  # Array for storing ME power cons. data
-        self.power_hsg = []  # Array for storing HSG power cons. data
-        self.me_rated = []  # Array for storing ME rated power data
-        self.hsg_rated = []  # Array for storing HSG rated power data
-        self.load_hist = []  # Array for storing load percentage history
-        self.fuel_rate_me = []  # Array for storing ME fuel cons. rate
-        self.fuel_rate_hsg = []  # Array for storing HSG fuel cons. rate
-        self.fuel_me = []  # Array for storing ME fuel cons.
-        self.fuel_hsg = []  # Array for storing HSG fuel cons.
-        self.fuel = []  # Array for storing total fuel cons
-        self.fuel_rate = []
-        self.load_perc_me = []
-        self.load_perc_hsg = []
-        self.power_total = []
-        self.power_prop = []
+        if fuel_coeffs_for_main_engine:
+            self.fuel_coeffs_for_main_engine = fuel_coeffs_for_main_engine
+            self.fuel_coeffs_for_diesel_gen = fuel_coeffs_for_diesel_gen
+            self.fuel_cons_me = 0.0  # Initial fuel cons for ME
+            self.fuel_cons_electrical = 0.0  # Initial fuel cons for HSG
+            self.fuel_cons = 0.0  # Initial total fuel cons
+            self.power_me = []  # Array for storing ME power cons. data
+            self.power_hsg = []  # Array for storing HSG power cons. data
+            self.me_rated = []  # Array for storing ME rated power data
+            self.hsg_rated = []  # Array for storing HSG rated power data
+            self.load_hist = []  # Array for storing load percentage history
+            self.fuel_rate_me = []  # Array for storing ME fuel cons. rate
+            self.fuel_rate_hsg = []  # Array for storing HSG fuel cons. rate
+            self.fuel_me = []  # Array for storing ME fuel cons.
+            self.fuel_hsg = []  # Array for storing HSG fuel cons.
+            self.fuel = []  # Array for storing total fuel cons
+            self.fuel_rate = []
+            self.load_perc_me = []
+            self.load_perc_hsg = []
+            self.power_total = []
+            self.power_prop = []
 
     def update_available_propulsion_power(self):
-        for mode in self.machinery_modes.list_of_modes:
-            mode.update_available_propulsion_power(self.hotel_load)
+        if not self.machinery_modes:
+            print("Machinery modes has not been set and available propulsion power cannot be set ")
+        else:
+            for mode in self.machinery_modes.list_of_modes:
+                mode.update_available_propulsion_power(self.hotel_load)
 
     def mode_selector(self, mode: int):
-        self.mode = self.machinery_modes.list_of_modes[mode]
+        if not self.machinery_modes:
+            print("Mode section is not available for this machinery system")
+        else:
+            self.mode = self.machinery_modes.list_of_modes[mode]
 
     def load_perc(self, load_perc):
         """ Calculates the load percentage on the main engine and the diesel_gens based on the
@@ -252,6 +271,9 @@ class BaseMachineryModel:
                 load_perc_me (float): Current load on the ME as a fraction of ME MCR
                 load_perc_hsg (float): Current load on the HSG as a fraction of HSG MCR
         """
+        if not self.mode:
+            print("Available power is not available for this machinery system")
+            return 0
         load_data = self.mode.distribute_load(load_perc=load_perc, hotel_load=self.hotel_load)
         return load_data.load_percentage_on_main_engine, load_data.load_percentage_on_electrical
 
@@ -398,6 +420,7 @@ class SimplifiedMachineryModel(BaseMachineryModel):
     def __init__(self, machinery_config: SimplifiedPropulsionMachinerySystemConfiguration,
                  time_step: float,
                  initial_thrust_force: float):
+
         super().__init__(
             fuel_coeffs_for_main_engine=machinery_config.specific_fuel_consumption_coefficients_me,
             fuel_coeffs_for_diesel_gen=machinery_config.specific_fuel_consumption_coefficients_dg,

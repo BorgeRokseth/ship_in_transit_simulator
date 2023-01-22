@@ -7,8 +7,135 @@ from models import ShipConfiguration, \
     SimulationConfiguration,\
     ShipDraw, ShipModel,\
     MachineryModes,\
-    MachineryModeParams,\
-    MachineryMode
+    MachineryModeParams, SimplifiedPropulsionMachinerySystemConfiguration,\
+    MachineryMode, SpecificFuelConsumptionWartila6L26, \
+    SpecificFuelConsumptionBaudouin6M26Dot3, FuelConsumptionCoefficients, SimplifiedMachineryModel
+
+class TestMachinerySystem(TestCase):
+    def set_up_machinery(self, me_rating, dg_rating, operating_mode, hotel_load):
+        hybrid_shaft_gen_as_generator = 'GEN'
+        hybrid_shaft_gen_as_motor = 'MOTOR'
+        hybrid_shaft_gen_as_offline = 'OFF'
+        pto_mode_params = MachineryModeParams(
+            main_engine_capacity=me_rating,
+            electrical_capacity=0,
+            shaft_generator_state=hybrid_shaft_gen_as_generator
+        )
+        pto_mode = MachineryMode(params=pto_mode_params)
+
+        mec_mode_params = MachineryModeParams(
+            main_engine_capacity=me_rating,
+            electrical_capacity=dg_rating,
+            shaft_generator_state=hybrid_shaft_gen_as_offline
+        )
+        mec_mode = MachineryMode(params=mec_mode_params)
+
+        pti_mode_params = MachineryModeParams(
+            main_engine_capacity=0,
+            electrical_capacity=2 * dg_rating,
+            shaft_generator_state=hybrid_shaft_gen_as_motor
+        )
+        pti_mode = MachineryMode(params=pti_mode_params)
+
+        mso_modes = MachineryModes(
+            [pto_mode,
+             mec_mode,
+             pti_mode]
+        )
+        fuel_curves_me = FuelConsumptionCoefficients(a=0, b=1, c=0)
+        fuel_curves_dg = FuelConsumptionCoefficients(a=0, b=1, c=0)
+        self.fuel_curves_me = fuel_curves_me
+        self.fuel_curves_dg = fuel_curves_dg
+        machinery_config = SimplifiedPropulsionMachinerySystemConfiguration(
+            hotel_load=hotel_load,
+            machinery_modes=mso_modes,
+            machinery_operating_mode=operating_mode,
+            max_rudder_angle_degrees=30,
+            rudder_angle_to_yaw_force_coefficient=500e3,
+            rudder_angle_to_sway_force_coefficient=50e3,
+            specific_fuel_consumption_coefficients_me=fuel_curves_me,
+            specific_fuel_consumption_coefficients_dg=fuel_curves_dg,
+            thrust_force_dynamic_time_constant=30
+        )
+        return SimplifiedMachineryModel(
+            machinery_config=machinery_config,
+            time_step=1,
+            initial_thrust_force=0
+        )
+    def test_load_perc_pto(self):
+        machinery = self.set_up_machinery(
+            me_rating=1000,
+            dg_rating=500,
+            operating_mode=0,
+            hotel_load=100
+        )
+        load_perc_on_me, load_perc_on_el = machinery.load_perc(load_perc=1)
+        self.assertEqual(1, load_perc_on_me)
+        self.assertEqual(0, load_perc_on_el)
+
+    def test_load_perc_mec(self):
+        machinery = self.set_up_machinery(
+            me_rating=1000,
+            dg_rating=500,
+            operating_mode=1,
+            hotel_load=100
+        )
+        load_perc_on_me, load_perc_on_el = machinery.load_perc(load_perc=1)
+        electrical_load = 100 / 500  # Due to hotel load
+        self.assertEqual(1, load_perc_on_me)
+        self.assertEqual(electrical_load, load_perc_on_el)
+
+    def test_load_perc_pti(self):
+        machinery = self.set_up_machinery(
+            me_rating=1000,
+            dg_rating=500,
+            operating_mode=2,
+            hotel_load=100
+        )
+        load_perc_on_me, load_perc_on_el = machinery.load_perc(load_perc=1)
+
+        self.assertEqual(0, load_perc_on_me)
+        self.assertEqual(1, load_perc_on_el)
+
+    def test_fuel_consumption_pto(self):
+        machinery = self.set_up_machinery(
+            me_rating=1000,
+            dg_rating=500,
+            operating_mode=0,
+            hotel_load=100
+        )
+        load_perc_on_me, load_perc_on_el = machinery.load_perc(load_perc=1)
+
+        # ME will generate 1000kW. 900 of these will be for propulsion, the rest for hotel
+        self.assertEqual(900, machinery.mode.available_propulsion_power_main_engine)
+        fuel_cons_rate = 1000 * load_perc_on_me / 3.6e9
+        rate_me, rate_el, fuel_cons_me, fuel_cons_el, fuel_cons = machinery.fuel_consumption(
+            load_perc=1
+        )
+        self.assertEqual(fuel_cons_rate, rate_me)
+
+    def test_fuel_consumption_mec(self):
+        machinery = self.set_up_machinery(
+            me_rating=1000,
+            dg_rating=500,
+            operating_mode=0,
+            hotel_load=100
+        )
+        load_perc_on_me, load_perc_on_el = machinery.load_perc(load_perc=1)
+
+        # ME will generate 1000kW and dg will take case of hotel.
+        # 1000 of these will be for propulsion
+        self.assertEqual(1000, machinery.mode.available_propulsion_power_main_engine)
+        fuel_cons_rate_me = 1000 * load_perc_on_me / 3.6e9
+        fuel_cons_rate_dg = 100 * load_perc_on_el / 3.6e9
+        rate_me, rate_el, fuel_cons_me, fuel_cons_el, fuel_cons = machinery.fuel_consumption(
+            load_perc=1
+        )
+        self.assertEqual(fuel_cons_rate_me, rate_me)
+        self.assertEqual(fuel_cons_rate_dg, rate_el)
+        self.assertEqual(fuel_cons_rate_dg+fuel_cons_rate_me, fuel_cons)
+
+
 
 class TestShipModel(TestCase):
     @staticmethod
@@ -17,11 +144,13 @@ class TestShipModel(TestCase):
                           initial_forward_speed: float,
                           initial_propeller_shaft_rpm: float):
 
-        main_engine_capacity = 2160e3
-        diesel_gen_capacity = 510e3
+        main_engine_capacity = 1000e3
+        diesel_gen_capacity = 500e3
         hybrid_shaft_gen_as_generator = 'GEN'
         hybrid_shaft_gen_as_motor = 'MOTOR'
         hybrid_shaft_gen_as_offline = 'OFF'
+
+        time_step = 0.5
 
         ship_config = ShipConfiguration(
             coefficient_of_deadweight_to_displacement=0.7,
@@ -73,10 +202,13 @@ class TestShipModel(TestCase):
              mec_mode,
              pti_mode]
         )
+        fuel_curves_me = SpecificFuelConsumptionWartila6L26()
+        fuel_curves_dg = SpecificFuelConsumptionBaudouin6M26Dot3()
 
         machinery_config = MachinerySystemConfiguration(
             hotel_load=200e3,
             machinery_modes=mso_modes,
+            machinery_operating_mode=1,
             rated_speed_main_engine_rpm=1000,
             linear_friction_main_engine=68,
             linear_friction_hybrid_shaft_generator=57,
@@ -88,23 +220,28 @@ class TestShipModel(TestCase):
             propeller_speed_to_thrust_force_coefficient=1.7,
             max_rudder_angle_degrees=30,
             rudder_angle_to_yaw_force_coefficient=500e3,
-            rudder_angle_to_sway_force_coefficient=50e3
+            rudder_angle_to_sway_force_coefficient=50e3,
+            specific_fuel_consumption_coefficients_me=fuel_curves_me.fuel_consumption_coefficients(),
+            specific_fuel_consumption_coefficients_dg=fuel_curves_dg.fuel_consumption_coefficients()
         )
-
         simulation_setup = SimulationConfiguration(
-            route_name=route_name,
             initial_north_position_m=0,
             initial_east_position_m=0,
-            initial_yaw_angle_rad=initial_yaw_angle * np.pi / 180,
-            initial_forward_speed_m_per_s=initial_forward_speed,
+            initial_yaw_angle_rad=10 * np.pi / 180,
+            initial_forward_speed_m_per_s=7,
             initial_sideways_speed_m_per_s=0,
             initial_yaw_rate_rad_per_s=0,
-            initial_propeller_shaft_speed_rad_per_s=initial_propeller_shaft_rpm * np.pi / 30,
-            machinery_system_operating_mode=1,
-            integration_step=1,
-            simulation_time=2
+            integration_step=time_step,
+            simulation_time=300
         )
-        return ShipModel(ship_config, machinery_config, env_config, simulation_setup)
+
+        return ShipModel(
+            ship_config=ship_config,
+            machinery_config=machinery_config,
+            environment_config=env_config,
+            simulation_config=simulation_setup,
+            initial_propeller_shaft_speed_rad_per_s=200 * np.pi / 30
+        )
 
     def basic_simulation_results(self, initial_forward_speed: float,
                                  initial_propeller_shaft_rpm: float,
